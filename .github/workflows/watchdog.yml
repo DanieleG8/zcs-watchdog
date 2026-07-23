@@ -1,1 +1,88 @@
+name: ZCS Watchdog
 
+on:
+  schedule:
+    # Ogni 15 minuti (UTC). GitHub puo' ritardare/accorpare le esecuzioni schedulate.
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Modalita' di esecuzione"
+        type: choice
+        default: run
+        options:
+          - run    # esecuzione normale
+          - dump   # stampa potenza e lastUpdate grezzi (calibrazione)
+          - test   # invia una notifica di prova
+
+# Serve per ricommittare state.json
+permissions:
+  contents: write
+
+concurrency:
+  group: zcs-watchdog
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          extensions: curl, json
+          coverage: none
+
+      - name: Run watchdog
+        id: wd
+        env:
+          # --- Secrets ZCS (Settings > Secrets and variables > Actions) ---
+          ZCS_CLIENT_CODE: ${{ secrets.ZCS_CLIENT_CODE }}
+          ZCS_AUTH_KEY:    ${{ secrets.ZCS_AUTH_KEY }}
+          ZCS_THING_KEY:   ${{ secrets.ZCS_THING_KEY }}
+          # --- Canali extra opzionali (email a parte, vedi step sotto) ---
+          TG_BOT_TOKEN:    ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID:      ${{ secrets.TG_CHAT_ID }}
+          WEBHOOK_URL:     ${{ secrets.WEBHOOK_URL }}
+          # --- Variables (o lascia i default nello script) ---
+          PLANT_LAT:         ${{ vars.PLANT_LAT }}
+          PLANT_LON:         ${{ vars.PLANT_LON }}
+          ZERO_W_THRESHOLD:  ${{ vars.ZERO_W_THRESHOLD }}
+          ZERO_PERSIST_MIN:  ${{ vars.ZERO_PERSIST_MIN }}
+          STALE_LIMIT_MIN:   ${{ vars.STALE_LIMIT_MIN }}
+          RENOTIFY_HOURS:    ${{ vars.RENOTIFY_HOURS }}
+          LASTUPDATE_IS_UTC: ${{ vars.LASTUPDATE_IS_UTC }}
+          TZ: Europe/Rome
+        # In dispatch usa la modalita' scelta; su schedule gira sempre in modalita' normale.
+        run: php watchdog.php ${{ inputs.mode == 'dump' && '--dump' || inputs.mode == 'test' && '--test' || '' }}
+
+      - name: Send email
+        # Parte solo quando lo script ha deciso di notificare (allarme / rientro / test)
+        if: steps.wd.outputs.notify == '1'
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.MAIL_SERVER }}
+          server_port:    ${{ secrets.MAIL_PORT }}
+          secure:         true                       # true per porta 465 (SSL)
+          username:       ${{ secrets.MAIL_USERNAME }}
+          password:       ${{ secrets.MAIL_PASSWORD }}
+          subject:        ${{ steps.wd.outputs.subject }}
+          to:             ${{ secrets.MAIL_TO }}
+          from:           ZCS Watchdog <${{ secrets.MAIL_FROM }}>
+          body:           ${{ steps.wd.outputs.body }}
+
+      - name: Persist state
+        run: |
+          if ! git diff --quiet -- state.json; then
+            git config user.name  "zcs-watchdog[bot]"
+            git config user.email "actions@users.noreply.github.com"
+            git add state.json
+            git commit -m "state: aggiornamento $(date -u +%FT%TZ)"
+            git push
+          else
+            echo "state.json invariato, nessun commit."
+          fi
