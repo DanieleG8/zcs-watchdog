@@ -1,7 +1,7 @@
 {
-    "status": "stale",
-    "since": 1785337323,
+    "status": "ok",
+    "since": 1785342986,
     "last_notified": 0,
-    "last_ok": 0,
+    "last_ok": 1785342986,
     "hb": "2026-07-29"
 }
