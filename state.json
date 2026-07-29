@@ -1,7 +1,7 @@
 {
-    "status": "unreachable",
-    "since": 1784811010,
+    "status": "stale",
+    "since": 1785337323,
     "last_notified": 0,
     "last_ok": 0,
-    "hb": "2026-07-23"
+    "hb": "2026-07-29"
 }
