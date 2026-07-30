@@ -119,9 +119,14 @@ $prev = $state['status'] ?? 'ok';
 $hb   = date('Y-m-d'); // heartbeat: cambia una volta al giorno -> tiene "attivo" il repo
 
 if ($condition === 'ok') {
-    if ($prev !== 'ok') {
+    $wasNotified = ($state['last_notified'] ?? 0) > 0;
+    if ($prev !== 'ok' && $wasNotified) {
         notify('RIENTRO', "Impianto tornato a produrre.\n$detail");
         logline("RIENTRO da '$prev'. $detail");
+    } elseif ($prev !== 'ok') {
+        // Anomalia rientrata durante il periodo di grazia: nessun allarme era
+        // stato inviato, quindi niente RIENTRO (solo log).
+        logline("Anomalia transitoria '$prev' rientrata senza allarme. $detail");
     } else {
         logline("OK. $detail");
     }
