@@ -121,7 +121,15 @@ $hb   = date('Y-m-d'); // heartbeat: cambia una volta al giorno -> tiene "attivo
 if ($condition === 'ok') {
     $wasNotified = ($state['last_notified'] ?? 0) > 0;
     if ($prev !== 'ok' && $wasNotified) {
-        notify('RIENTRO', "Impianto tornato a produrre.\n$detail");
+        // Il testo del rientro dipende dal tipo di anomalia rientrata: un
+        // ripristino API/inverter non e' "tornato a produrre".
+        $rientroMsg = [
+            'zero'        => 'Impianto tornato a produrre.',
+            'stale'       => 'Inverter di nuovo online: dati aggiornati.',
+            'unreachable' => 'Monitoraggio ripristinato: API di nuovo raggiungibile.',
+        ];
+        $msg = $rientroMsg[$prev] ?? 'Situazione tornata alla normalita\'.';
+        notify('RIENTRO', "$msg\n$detail");
         logline("RIENTRO da '$prev'. $detail");
     } elseif ($prev !== 'ok') {
         // Anomalia rientrata durante il periodo di grazia: nessun allarme era
