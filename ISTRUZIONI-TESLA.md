@@ -37,14 +37,32 @@ che serve per accorgersi che qualcosa non va.
 
 ## Passo 1 — Crea l'app su developer.tesla.com
 
-1. Vai su https://developer.tesla.com e accedi con l'account Tesla.
-2. Crea una nuova applicazione. Ti servira' indicare:
-   - **Scopes**: spunta almeno *Energy Product Information* (`energy_device_data`).
-     Non servono gli scope dei veicoli ne' i comandi.
-   - **Allowed Origin / Redirect URI**: un indirizzo del tuo dominio, per esempio
-     `https://tuodominio.it/tesla-callback`. Non deve per forza esistere come pagina:
-     serve solo a ricevere il `?code=` nella barra degli indirizzi del browser.
-3. A fine creazione annota **Client ID** e **Client Secret**.
+Vai su https://developer.tesla.com, accedi con l'account Tesla e crea una nuova
+applicazione. La procedura guidata ha cinque schermate:
+
+**Dettagli del cliente**
+
+| Campo | Cosa mettere |
+|-------|--------------|
+| Tipo di concessione OAuth | **Codice di autorizzazione e Machine-to-Machine**. Serve l'authorization code: e' il flusso con cui autorizzi il tuo account e ottieni il refresh token. Con "Solo Machine-to-Machine" non leggeresti il tuo Powerwall. |
+| URL di origine consentiti | solo schema + dominio, senza percorso: `https://tuodominio.it` |
+| URI di reindirizzamento consentiti | `https://tuodominio.it/tesla-callback` |
+| URL restituiti consentiti | lascialo vuoto |
+
+Il redirect non deve esistere come pagina (un 404 va bene): serve solo a farti
+arrivare il `?code=` nella barra degli indirizzi. Lo stesso identico valore andra'
+nel secret `TESLA_REDIRECT_URI` — il confronto e' esatto, attenzione alla barra finale.
+
+Il dominio dev'essere **lo stesso** su cui pubblicherai la chiave pubblica del Passo 2,
+e con un certificato di una CA vera: `http://` e' ammesso solo per localhost.
+
+**API e ambiti di applicazione**: spunta *Energy Product Information*
+(`energy_device_data`). Gli ambiti dei veicoli e i comandi non servono.
+
+**Dettagli di fatturazione**: opzionale, le sole letture stanno nel piano gratuito.
+
+A fine creazione annota **Client ID** e **Client Secret**: il secret viene mostrato
+una volta sola.
 
 ## Passo 2 — Pubblica la chiave pubblica sul dominio
 
