@@ -123,5 +123,24 @@ list($ok, $err) = githubSetSecret('TESLA_REFRESH_TOKEN', 'valore');
 check('fallisce in modo pulito', false, $ok);
 check('spiega cosa manca', 'GH_SECRETS_TOKEN non impostato', $err);
 
+echo "\nestraiCode — il code si puo' incollare come URL intero\n";
+
+$atteso = 'EU_u1ta0xfsfztdjlrxwg1wf9v237xzmaxd7miy2mxcf9zj2avg';
+check('solo il code -> invariato', $atteso, estraiCode($atteso));
+check('spazi intorno -> ripuliti', $atteso, estraiCode("  $atteso\n"));
+check(
+    'URL intero della redirect -> estrae il code',
+    $atteso,
+    estraiCode("https://www.pn-ta.it/teslapath?code=$atteso&issuer=https%3A%2F%2Fauth.tesla.com%2Foauth2%2Fv3&state=5bd8e1e9")
+);
+check(
+    'code non in prima posizione -> lo trova lo stesso',
+    $atteso,
+    estraiCode("https://www.pn-ta.it/teslapath?state=abc&code=$atteso")
+);
+check('sola query string -> funziona', $atteso, estraiCode("?code=$atteso&state=abc"));
+check('URL di errore senza code -> vuoto (non si tenta lo scambio)', '', estraiCode('https://www.pn-ta.it/teslapath?error=access_denied'));
+check('stringa vuota -> vuoto', '', estraiCode('   '));
+
 echo "\n" . ($fails === 0 ? "Tutte le prove sono passate.\n" : "$fails prove fallite.\n");
 exit($fails === 0 ? 0 : 1);

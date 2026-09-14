@@ -303,7 +303,8 @@ function cmdAuthUrl(): int
     ]);
     echo "Apri questo indirizzo nel browser, accedi con l'account Tesla e autorizza:\n\n$url\n\n";
     echo "Verrai rimandato al redirect URI con ?code=... nella barra degli indirizzi:\n";
-    echo "copia quel valore e lancialo con la modalita' 'exchange' (il code dura pochi minuti).\n";
+    echo "incolla l'indirizzo intero (o il solo code) nella modalita' 'exchange'.\n";
+    echo "ATTENZIONE: il code scade in pochi minuti, fallo subito.\n";
     return 0;
 }
 
@@ -344,9 +345,27 @@ function cmdRegister(): int
     return 0;
 }
 
+/**
+ * Accetta sia il solo code sia l'URL intero della redirect: il code dura pochi
+ * minuti, e far ritagliare a mano il parametro e' il modo piu' facile per
+ * arrivare tardi (o per portarsi dietro un '&issuer=...' di troppo).
+ */
+function estraiCode(string $raw): string
+{
+    $raw = trim($raw);
+    if ($raw === '') return '';
+    if (!str_contains($raw, '=')) return $raw;      // e' gia' il solo code
+
+    $query = parse_url($raw, PHP_URL_QUERY);
+    if ($query === null || $query === false) $query = ltrim($raw, '?');
+    parse_str((string) $query, $par);
+    return isset($par['code']) ? trim((string) $par['code']) : '';
+}
+
 function cmdExchange(string $codeParam): int
 {
     global $CLIENT_ID, $CLIENT_SECRET, $REDIRECT_URI;
+    $codeParam = estraiCode($codeParam);
     if ($codeParam === '') { fwrite(STDERR, "Manca il code da scambiare.\n"); return 1; }
     if ($CLIENT_ID === '' || $CLIENT_SECRET === '' || $REDIRECT_URI === '') {
         fwrite(STDERR, "Servono TESLA_CLIENT_ID, TESLA_CLIENT_SECRET e TESLA_REDIRECT_URI.\n");
