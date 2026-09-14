@@ -142,5 +142,35 @@ check('sola query string -> funziona', $atteso, estraiCode("?code=$atteso&state=
 check('URL di errore senza code -> vuoto (non si tenta lo scambio)', '', estraiCode('https://www.pn-ta.it/teslapath?error=access_denied'));
 check('stringa vuota -> vuoto', '', estraiCode('   '));
 
+echo "\ninterpretaRisposta — una 2xx senza corpo e' un successo\n";
+
+// La PUT che scrive un secret su GitHub risponde 204 a corpo vuoto: se la
+// trattiamo come errore, il refresh token appena ottenuto e' perso.
+list($ok, , , $err) = interpretaRisposta('', 204, '');
+check('204 a corpo vuoto -> ok', true, $ok);
+check('  e nessun errore', '', $err);
+list($ok, , $dati) = interpretaRisposta('', 201, '');
+check('201 a corpo vuoto (secret creato) -> ok', true, $ok);
+check('  con dati vuoti, non null', [], $dati);
+list($ok) = interpretaRisposta("\n", 204, '');
+check('204 con solo spaziatura -> ok', true, $ok);
+
+list($ok, $codice, $dati) = interpretaRisposta('{"key_id":"abc"}', 200, '');
+check('200 con JSON -> ok, dati decodificati', 'abc', $dati['key_id']);
+check('  e il codice HTTP torna indietro', 200, $codice);
+
+list($ok, , , $err) = interpretaRisposta('<html>manutenzione</html>', 200, '');
+check('200 con corpo non JSON -> errore', false, $ok);
+check('  lo dice', true, str_contains($err, 'Non JSON'));
+
+list($ok, , , $err) = interpretaRisposta('{"error":"invalid_auth_code"}', 400, '');
+check('400 -> errore anche se il corpo e\' JSON valido', false, $ok);
+check('  e riporta il corpo, che spiega il perche\'', true, str_contains($err, 'invalid_auth_code'));
+
+list($ok, $codice, , $err) = interpretaRisposta(false, 0, 'timeout');
+check('cURL fallito -> errore', false, $ok);
+check('  senza codice HTTP da mostrare', 0, $codice);
+check('  con il messaggio di cURL', true, str_contains($err, 'timeout'));
+
 echo "\n" . ($fails === 0 ? "Tutte le prove sono passate.\n" : "$fails prove fallite.\n");
 exit($fails === 0 ? 0 : 1);

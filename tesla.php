@@ -553,9 +553,22 @@ function httpJson(string $method, string $url, array $headers = [], ?array $body
     $cerr = curl_error($ch);
     curl_close($ch);
 
+    return interpretaRisposta($resp, $code, $cerr);
+}
+
+/**
+ * Legge l'esito di una risposta HTTP. Vive separata da httpJson perche' e' la
+ * parte che si puo' provare senza rete (vedi tests/tesla_test.php).
+ */
+function interpretaRisposta($resp, int $code, string $cerr): array
+{
     if ($resp === false)             return [false, 0, null, "cURL: $cerr"];
     $data = json_decode((string) $resp, true);
     if ($code < 200 || $code >= 300) return [false, $code, $data, "HTTP $code. Body: " . substr((string) $resp, 0, 300)];
+    // Una risposta 2xx puo' legittimamente non avere corpo: la PUT che scrive un
+    // secret su GitHub risponde 201 o 204 a corpo vuoto. Pretendere del JSON qui
+    // significava buttare via un refresh token appena ottenuto.
+    if (trim((string) $resp) === '') return [true, $code, [], ''];
     if (!is_array($data))            return [false, $code, null, 'Non JSON: ' . substr((string) $resp, 0, 300)];
     return [true, $code, $data, ''];
 }
