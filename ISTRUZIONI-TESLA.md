@@ -14,7 +14,7 @@ Tutti i passaggi si fanno dal pannello **Actions** e dal browser: non serve PHP 
 | Allarme | Quando scatta |
 |---------|----------------|
 | **STALE** | il Gateway non manda piu' telemetria da oltre `TESLA_STALE_LIMIT_MIN` minuti (default 60): sistema staccato, gateway guasto, rete di casa giu' |
-| **OFFGRID** | il sistema e' passato in isola (`island_status` diverso da `on_grid`) per oltre `TESLA_OFFGRID_PERSIST_MIN` minuti (default 15): blackout o distacco dalla rete |
+| **OFFGRID** | il sistema e' passato in isola (`island_status` diverso da `on_grid`) per oltre `TESLA_OFFGRID_PERSIST_MIN` minuti (default 15): blackout o distacco dalla rete. L'etichetta da sola non basta: se dal contatore rete passano piu' di `TESLA_OFFGRID_GRID_W` watt, la rete c'e' e l'allarme non parte |
 | **SOC** | carica sotto `TESLA_SOC_MIN_PERCENT` (default 0 = controllo spento) |
 | **AUTH** | il refresh token non e' piu' valido: il monitoraggio e' fermo, va rifatta l'autorizzazione |
 | **UNREACH** | la Fleet API non risponde per oltre `TESLA_UNREACH_PERSIST_MIN` minuti (default 30) |
@@ -158,6 +158,7 @@ Variables utili (tab **Variables**, tutte opzionali):
 | `TESLA_OFFGRID_PERSIST_MIN` | 15      | minuti in isola prima di avvisare          |
 | `TESLA_UNREACH_PERSIST_MIN` | 30      | minuti di API muta prima di avvisare       |
 | `TESLA_SOC_MIN_PERCENT`     | 0       | soglia carica minima (0 = controllo spento)|
+| `TESLA_OFFGRID_GRID_W`      | 200     | watt di scambio oltre i quali un 'off_grid' dichiarato non e' credibile |
 | `TESLA_LOOP_INTERVAL_SEC`   | 600     | secondi tra un controllo e il successivo   |
 
 ## Passo 5 — Registrazione una tantum del partner account

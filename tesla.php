@@ -54,6 +54,8 @@ $STALE_LIMIT_MIN     = (int) env('TESLA_STALE_LIMIT_MIN', '60');
 $OFFGRID_PERSIST_MIN = (int) env('TESLA_OFFGRID_PERSIST_MIN', '15');
 $UNREACH_PERSIST_MIN = (int) env('TESLA_UNREACH_PERSIST_MIN', '30');
 $SOC_MIN_PERCENT     = (float) env('TESLA_SOC_MIN_PERCENT', '0'); // 0 = controllo disattivato
+// Watt di scambio con la rete oltre i quali un 'off_grid' dichiarato non e' credibile.
+$OFFGRID_GRID_W      = (float) env('TESLA_OFFGRID_GRID_W', '200');
 $RENOTIFY_HOURS      = (int) env('RENOTIFY_HOURS', '6');
 
 // Notifiche (stessi canali del watchdog fotovoltaico)
@@ -74,6 +76,7 @@ function main(array $argv): int
 {
     global $CLIENT_ID, $REFRESH_TOKEN, $SITE_ID, $REGION;
     global $STALE_LIMIT_MIN, $OFFGRID_PERSIST_MIN, $UNREACH_PERSIST_MIN, $SOC_MIN_PERCENT, $RENOTIFY_HOURS;
+    global $OFFGRID_GRID_W;
 
     $flag = $argv[1] ?? '';
 
@@ -159,6 +162,7 @@ function main(array $argv): int
     list($condition, $detail) = evaluateCondition($live, time(), [
         'stale_limit_min'  => $STALE_LIMIT_MIN,
         'soc_min_percent'  => $SOC_MIN_PERCENT,
+        'offgrid_grid_w'   => $OFFGRID_GRID_W,
     ]);
     return handleCondition($condition, $detail, $live);
 }
@@ -193,6 +197,18 @@ function evaluateCondition(array $live, int $now, array $cfg): array
     $offgrid = $island !== ''
         ? !str_starts_with($island, 'on_grid')
         : in_array($grid, ['Islanded', 'Inactive'], true);
+
+    // Su questo impianto island_status dichiara 'off_grid_unintentional' mentre
+    // il contatore rete misura migliaia di watt in ingresso: un sistema in isola
+    // non scambia con la rete, per definizione. Fidarsi della sola etichetta
+    // vorrebbe dire una mail di blackout ogni ora, e allarmi che nessuno legge
+    // piu' sono peggio che nessun allarme. Serve la conferma della misura.
+    $gridW = isset($live['grid_power']) ? abs((float) $live['grid_power']) : null;
+    if ($offgrid && $gridW !== null && $gridW > $cfg['offgrid_grid_w']) {
+        return ['ok', sprintf('%s (island_status dice %s, ma dalla rete passano %s: non e\' isola)',
+            $riepilogo, $island !== '' ? $island : 'n/d', fmtW($gridW))];
+    }
+
     if ($offgrid) {
         $extra = !empty($live['storm_mode_active']) ? ' Storm Mode attivo.' : '';
         return ['offgrid', sprintf('Sistema in isola (island_status: %s, grid_status: %s).%s %s',
