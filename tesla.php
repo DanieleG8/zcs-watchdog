@@ -98,8 +98,16 @@ function main(array $argv): int
 
     // 1. Access token: riusa quello in cache finche' e' valido, cosi' il loop
     //    del workflow non rinnova (e non fa ruotare) il refresh token ogni giro.
+    // Le modalita' di diagnostica servono a collaudare la configurazione: se
+    // qualcosa non va devono stamparlo, non far partire mail di allarme.
+    $diagnostica = in_array($flag, ['--sites', '--dump'], true);
+
     list($access, $err) = getAccessToken(false);
     if ($access === null) {
+        if ($diagnostica) {
+            fwrite(STDERR, "Rinnovo token fallito: $err\n");
+            return 1;
+        }
         // Un token rifiutato non e' un blip di rete: niente attesa, si avvisa subito.
         $isAuth = (bool) preg_match('/invalid_grant|invalid_client|unauthorized|HTTP 40[013]/i', $err);
         return handleCondition($isAuth ? 'auth' : 'unreachable', "Rinnovo token fallito: $err", null);
@@ -118,6 +126,7 @@ function main(array $argv): int
         logline('Access token rifiutato: ne chiedo uno nuovo e riprovo.');
         list($access, $aerr) = getAccessToken(true);
         if ($access === null) {
+            if ($diagnostica) { fwrite(STDERR, "Rinnovo token fallito: $aerr\n"); return 1; }
             return handleCondition('auth', "Rinnovo token fallito: $aerr", null);
         }
         list($ok, $code, $data, $err) = apiGet($base, $access, $path);
@@ -142,6 +151,7 @@ function main(array $argv): int
     }
 
     if (!$ok || $live === null) {
+        if ($diagnostica) { fwrite(STDERR, "Errore: " . ($ok ? 'risposta senza campo response.' : $err) . "\n"); return 1; }
         return handleCondition('unreachable', $ok ? 'Risposta senza campo response.' : $err, null);
     }
 
