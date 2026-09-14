@@ -4,7 +4,16 @@ Controllo automatico dell'inverter fotovoltaico **ZCS Azzurro** tramite GitHub A
 Interroga l'API realtime ogni 5 minuti e avvisa (email, piu' Telegram / webhook opzionali)
 se l'impianto smette di produrre o l'inverter va offline.
 
-## Cosa rileva
+Nel repo convivono due watchdog indipendenti:
+
+| Workflow | Cosa guarda | Stato | Istruzioni |
+|----------|-------------|-------|------------|
+| `watchdog.yml` (`watchdog.php`) | inverter fotovoltaico ZCS Azzurro | `state.json` | `ISTRUZIONI.md` |
+| `tesla.yml` (`tesla.php`) | batteria Tesla Powerwall via Fleet API | `state-tesla.json` | `ISTRUZIONI-TESLA.md` |
+
+Condividono i secret `MAIL_*` e i canali di notifica; per il resto sono separati.
+
+## Cosa rileva (fotovoltaico)
 
 - **STALE** — l'inverter non trasmette piu' dati (`lastUpdate` piu' vecchio della soglia). Controllo 24h/24.
 - **ZERO** — di giorno (tra alba e tramonto) la potenza resta sotto soglia per N minuti.
@@ -98,4 +107,5 @@ esterno: un servizio cron gratuito (es. cron-job.org) che chiami
   cambia la costante `ENDPOINT` in `watchdog.php`.
 - Le modalita' di avvio manuale sono: `run` (normale, in loop), `once` (un solo controllo),
   `dump` (stampa i valori grezzi, non tocca lo stato), `test` (invia una notifica di prova).
-- Progetto non affiliato a Zucchetti Centro Sistemi S.p.A.
+- Prove della logica del watchdog Powerwall: `php tests/tesla_test.php`.
+- Progetto non affiliato a Zucchetti Centro Sistemi S.p.A. ne' a Tesla Inc.
