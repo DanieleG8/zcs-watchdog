@@ -1,9 +1,10 @@
 {
     "status": "ok",
-    "since": 1789374554,
+    "since": 1789374882,
     "last_notified": 0,
-    "last_ok": 1789374554,
+    "last_ok": 1789374882,
     "hb": "2026-09-14",
-    "etot": 218529.9,
-    "etot_ts": 1789374554
+    "etot_ref": 218529.9,
+    "ref_ts": 1789374882,
+    "prod_bad": false
 }
