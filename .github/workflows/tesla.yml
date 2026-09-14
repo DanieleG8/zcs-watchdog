@@ -55,11 +55,16 @@ jobs:
         id: wd
         env:
           # --- App Tesla (developer.tesla.com) ---
-          TESLA_CLIENT_ID:     ${{ secrets.TESLA_CLIENT_ID }}
+          # client_id e redirect_uri in OAuth sono PUBBLICI (finiscono nella barra
+          # del browser): vanno nelle Variables, non nei Secrets. Se stanno nei
+          # Secrets, GitHub li maschera e l'URL di autorizzazione stampato dalla
+          # modalita' 'authurl' diventa inutilizzabile. Il fallback su secrets
+          # resta per chi li aveva gia' messi li'.
+          TESLA_CLIENT_ID:     ${{ vars.TESLA_CLIENT_ID || secrets.TESLA_CLIENT_ID }}
+          TESLA_REDIRECT_URI:  ${{ vars.TESLA_REDIRECT_URI || secrets.TESLA_REDIRECT_URI }}
           TESLA_CLIENT_SECRET: ${{ secrets.TESLA_CLIENT_SECRET }}
           TESLA_REFRESH_TOKEN: ${{ secrets.TESLA_REFRESH_TOKEN }}
-          TESLA_REDIRECT_URI:  ${{ secrets.TESLA_REDIRECT_URI }}
-          TESLA_SITE_ID:       ${{ secrets.TESLA_SITE_ID }}
+          TESLA_SITE_ID:       ${{ vars.TESLA_SITE_ID || secrets.TESLA_SITE_ID }}
           # PAT con permesso "Secrets: write": serve a risalvare il refresh token
           # che Tesla ruota a ogni rinnovo. Senza, il monitoraggio muore in 24h.
           GH_SECRETS_TOKEN:    ${{ secrets.GH_SECRETS_TOKEN }}

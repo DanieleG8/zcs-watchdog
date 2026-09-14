@@ -122,14 +122,29 @@ nuovo nei Secrets del repo.
 
 Repo → **Settings → Secrets and variables → Actions → Secrets**.
 
+Nei **Secrets** vanno solo i valori davvero riservati:
+
 | Nome                  | Valore                                              |
 |-----------------------|-----------------------------------------------------|
-| `TESLA_CLIENT_ID`     | Client ID dell'app Tesla                            |
 | `TESLA_CLIENT_SECRET` | Client Secret dell'app Tesla                        |
-| `TESLA_REDIRECT_URI`  | lo stesso identico redirect URI dichiarato nell'app |
 | `GH_SECRETS_TOKEN`    | il PAT del Passo 3                                  |
-| `TESLA_REFRESH_TOKEN` | mettilo vuoto o con un valore fittizio: lo riscrive il Passo 6 |
-| `TESLA_SITE_ID`       | lo ricavi al Passo 7                                |
+| `TESLA_REFRESH_TOKEN` | segnaposto finche' non fai il Passo 6, poi lo riscrive lo script |
+
+⚠️ **Il segnaposto non dev'essere una sola lettera.** Un secret che vale `x` o `c`
+fa mascherare quella lettera in **tutti** i log del repo: ti ritrovi con
+`Che***kout`, `e***it 0`, e l'output diventa illeggibile. Usa qualcosa come
+`da-sostituire-al-passo-6`.
+
+Nelle **Variables** (tab accanto) vanno invece i valori pubblici. In OAuth il
+client_id e il redirect_uri **non sono segreti**: finiscono nella barra degli
+indirizzi del browser. Se li metti nei Secrets, GitHub li maschera e l'URL
+stampato dalla modalita' `authurl` diventa inutilizzabile.
+
+| Nome                 | Valore                                              |
+|----------------------|-----------------------------------------------------|
+| `TESLA_CLIENT_ID`    | Client ID dell'app Tesla                            |
+| `TESLA_REDIRECT_URI` | lo stesso identico redirect URI dichiarato nell'app |
+| `TESLA_SITE_ID`      | lo ricavi al Passo 7                                |
 
 I secret `MAIL_*` sono gia' quelli del watchdog fotovoltaico: non serve rifarli.
 
