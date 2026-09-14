@@ -55,7 +55,7 @@ $STALE_LIMIT_MIN     = (int) env('STALE_LIMIT_MIN', '45');
 $ENERGY_WINDOW_MIN   = (int) env('ENERGY_WINDOW_MIN', '60');
 $UNREACH_PERSIST_MIN = (int) env('UNREACH_PERSIST_MIN', '30');
 $DAY_MARGIN_MIN      = (int) env('DAY_MARGIN_MIN', '40');
-$RENOTIFY_HOURS      = (int) env('RENOTIFY_HOURS', '6');
+$RENOTIFY_HOURS      = (int) env('RENOTIFY_HOURS', '4');
 $LASTUPDATE_IS_UTC   = envBool('LASTUPDATE_IS_UTC', false);
 
 // Notifiche

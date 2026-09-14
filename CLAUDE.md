@@ -59,7 +59,7 @@ introdotte.
 - **L'isola dichiarata dal Powerwall va confermata dal contatore rete.** Questo
   impianto dichiara stabilmente `off_grid_unintentional` mentre preleva
   chilowatt dalla rete. Fidarsi dell'etichetta significava una mail di blackout
-  ogni sei ore.
+  ogni quattro ore.
 
 ## Cose che si rompono in silenzio
 

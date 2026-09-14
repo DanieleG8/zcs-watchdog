@@ -88,7 +88,7 @@ solo quando lo script decide di notificare. Telegram/webhook sono canali aggiunt
 | `ZERO_PERSIST_MIN`  | 90      | attesa del solo ripiego senza contatore |
 | `STALE_LIMIT_MIN`   | 45      | min senza dati = inverter offline      |
 | `ENERGY_WINDOW_MIN` | 60      | minuti su cui si misura l'energia entrata |
-| `RENOTIFY_HOURS`    | 6       | promemoria mentre resta in allarme     |
+| `RENOTIFY_HOURS`    | 4       | promemoria mentre resta in allarme     |
 | `LASTUPDATE_IS_UTC` | false   | metti `true` se l'API restituisce UTC  |
 | `LOOP_MINUTES`      | 55      | durata del loop interno (vedi sotto)   |
 | `LOOP_INTERVAL_SEC` | 300     | secondi tra un controllo e il successivo|
