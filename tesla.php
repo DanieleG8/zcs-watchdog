@@ -56,7 +56,7 @@ $UNREACH_PERSIST_MIN = (int) env('TESLA_UNREACH_PERSIST_MIN', '30');
 $SOC_MIN_PERCENT     = (float) env('TESLA_SOC_MIN_PERCENT', '0'); // 0 = controllo disattivato
 // Watt di scambio con la rete oltre i quali un 'off_grid' dichiarato non e' credibile.
 $OFFGRID_GRID_W      = (float) env('TESLA_OFFGRID_GRID_W', '200');
-$RENOTIFY_HOURS      = (int) env('RENOTIFY_HOURS', '6');
+$RENOTIFY_HOURS      = (int) env('RENOTIFY_HOURS', '4');
 
 // Notifiche (stessi canali del watchdog fotovoltaico)
 $TG_BOT_TOKEN = env('TG_BOT_TOKEN', '');

@@ -129,7 +129,7 @@ Stessa pagina, **tab "Variables"**. Se non le imposti, valgono i default dello s
 | `ZERO_PERSIST_MIN`  | 90      | min di zero diurno prima dell'allarme |
 | `STALE_LIMIT_MIN`   | 45      | min senza dati = inverter offline     |
 | `ENERGY_WINDOW_MIN` | 60      | minuti su cui si misura l'energia realmente entrata |
-| `RENOTIFY_HOURS`    | 6       | ogni quante ore ripetere l'allarme    |
+| `RENOTIFY_HOURS`    | 4       | ogni quante ore ripetere l'allarme    |
 | `LASTUPDATE_IS_UTC` | false   | metti `true` se l'API dà orari in UTC |
 | `LOOP_MINUTES`      | 55      | quanto resta vivo il job a ricontrollare |
 | `LOOP_INTERVAL_SEC` | 300     | secondi tra un controllo e il successivo |

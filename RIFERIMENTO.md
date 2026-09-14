@@ -71,7 +71,7 @@ il dettaglio con i numeri del momento e chiude con da quanto dura l'anomalia.
 
 ### Due regole che valgono per tutte
 
-- **Anti-spam**: finche' l'anomalia dura, la mail si ripete ogni 6 ore
+- **Anti-spam**: finche' l'anomalia dura, la mail si ripete ogni 4 ore
   (`RENOTIFY_HOURS`), non a ogni controllo.
 - **Niente rientri fantasma**: il RIENTRO parte solo se l'allarme corrispondente
   era stato davvero spedito. Un guasto risolto prima della soglia di persistenza
@@ -155,7 +155,7 @@ Sono tutte Variables del repo: si cambiano senza toccare il codice.
 | `STALE_LIMIT_MIN` | 60 | minuti di silenzio dell'inverter |
 | `UNREACH_PERSIST_MIN` | 30 (default) | minuti di API muta |
 | `DAY_MARGIN_MIN` | 40 (default) | margine su alba e tramonto |
-| `RENOTIFY_HOURS` | 6 | ogni quanto si ripete un allarme |
+| `RENOTIFY_HOURS` | 4 | ogni quanto si ripete un allarme |
 | `LOOP_INTERVAL_SEC` | 300 | secondi fra un controllo e il successivo |
 
 ### Batteria
