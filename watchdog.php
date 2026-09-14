@@ -3,9 +3,19 @@
  * ZCS Azzurro - Watchdog produzione fotovoltaico (versione GitHub Actions)
  * -----------------------------------------------------------------------
  * Interroga l'API realtime dell'inverter ZCS e avvisa se:
- *   1) STALE   -> l'inverter non trasmette piu' dati (timestamp vecchio)   [24h]
- *   2) ZERO    -> di giorno la potenza generata resta a zero               [solo alba-tramonto]
- *   3) UNREACH -> l'API non risponde (rete / endpoint / auth)              [warning monitoraggio]
+ *   1) STALE    -> l'inverter non trasmette piu' dati (timestamp vecchio)  [24h]
+ *   2) ZERO     -> di giorno la potenza resta a zero E il contatore di
+ *                  energia non sale                                        [solo alba-tramonto]
+ *   3) NOENERGY -> la potenza dice che produce ma il contatore di energia
+ *                  e' fermo: produzione apparente, non reale               [solo alba-tramonto]
+ *   4) UNREACH  -> l'API non risponde (rete / endpoint / auth)             [warning monitoraggio]
+ *
+ * Perche' due segnali invece della sola potenza: il 14/09/2026 il portale ZCS
+ * mostrava 613 W mentre l'API dava 0 W, e il contatore energyGeneratingTotal
+ * non si muoveva di un decimo di kWh da oltre un'ora. Il contatore cumulativo
+ * e' la prova dei fatti: se non sale, non si sta producendo, qualunque cosa
+ * dica il campo della potenza; se sale, non c'e' allarme neanche se quel
+ * campo e' rotto.
  *
  * Pensato per girare su GitHub Actions via cron. La configurazione arriva
  * dalle variabili d'ambiente (impostate come Secrets/Variables del repo).
@@ -39,6 +49,7 @@ $LON = (float) env('PLANT_LON', '12.4460');
 $ZERO_W_THRESHOLD    = (int) env('ZERO_W_THRESHOLD', '50');
 $ZERO_PERSIST_MIN    = (int) env('ZERO_PERSIST_MIN', '90');
 $STALE_LIMIT_MIN     = (int) env('STALE_LIMIT_MIN', '45');
+$ENERGY_STALL_MIN    = (int) env('ENERGY_STALL_MIN', '60');
 $UNREACH_PERSIST_MIN = (int) env('UNREACH_PERSIST_MIN', '30');
 $DAY_MARGIN_MIN      = (int) env('DAY_MARGIN_MIN', '40');
 $RENOTIFY_HOURS      = (int) env('RENOTIFY_HOURS', '6');
@@ -63,6 +74,8 @@ if ($isTest) {
     exit(0);
 }
 
+if (defined('ZCS_WATCHDOG_TEST')) return;   // caricato dai test: niente rete, niente stato
+
 list($ok, $data, $err) = fetchRealtime($CLIENT_CODE, $AUTH_KEY, $THING_KEY, $VERIFY_SSL);
 
 if ($isDump) {
@@ -81,6 +94,8 @@ $state = loadState();
 $now   = time();
 
 /* 1. Condizione attuale */
+$energy = ['etot' => $state['etot'] ?? null, 'etot_ts' => $now];
+
 if (!$ok) {
     $condition = 'unreachable';
     $detail    = $err;
@@ -90,27 +105,22 @@ if (!$ok) {
         $condition = 'unreachable';
         $detail    = 'Risposta senza dati validi (verifica auth/thingKey). Raw: ' . substr(json_encode($data), 0, 400);
     } else {
-        $powerW = (float) ($node['powerGenerating'] ?? 0);
-        $lastTs = parseLastUpdate($node['lastUpdate'] ?? null, $LASTUPDATE_IS_UTC);
-        $ageMin = $lastTs ? ($now - $lastTs) / 60 : PHP_INT_MAX;
-
-        if ($ageMin > $STALE_LIMIT_MIN) {
-            $condition = 'stale';
-            $detail    = sprintf('Ultimo dato %s (%.0f min fa).', $lastTs ? date('Y-m-d H:i:s', $lastTs) : 'n/d', $ageMin);
-        } elseif (isDaytime($now, $LAT, $LON, $DAY_MARGIN_MIN) && $powerW <= $ZERO_W_THRESHOLD) {
-            $condition = 'zero';
-            $detail    = sprintf('Potenza %.0f W di giorno (soglia %d W). Ultimo dato %s.',
-                          $powerW, $ZERO_W_THRESHOLD, $lastTs ? date('H:i', $lastTs) : 'n/d');
-        } else {
-            $condition = 'ok';
-            $detail    = sprintf('Potenza %.0f W. Ultimo dato %s.', $powerW, $lastTs ? date('H:i', $lastTs) : 'n/d');
-        }
+        list($condition, $detail, $energy) = evaluateProduction($node, $now, $state, [
+            'zero_w_threshold'  => $ZERO_W_THRESHOLD,
+            'stale_limit_min'   => $STALE_LIMIT_MIN,
+            'energy_stall_min'  => $ENERGY_STALL_MIN,
+            'lastupdate_is_utc' => $LASTUPDATE_IS_UTC,
+            'lat'               => $LAT,
+            'lon'               => $LON,
+            'day_margin_min'    => $DAY_MARGIN_MIN,
+        ]);
     }
 }
 
 /* 2. Stato + anti-spam */
 $persistMin = [
     'zero'        => $ZERO_PERSIST_MIN,
+    'noenergy'    => 0,   // l'attesa e' gia' nei minuti di contatore fermo
     'stale'       => $STALE_LIMIT_MIN,
     'unreachable' => $UNREACH_PERSIST_MIN,
     'ok'          => 0,
@@ -119,13 +129,17 @@ $prev = $state['status'] ?? 'ok';
 $hb   = date('Y-m-d'); // heartbeat: cambia una volta al giorno -> tiene "attivo" il repo
 
 if ($condition === 'ok') {
-    if ($prev !== 'ok') {
+    // Il rientro si annuncia solo se l'allarme era stato davvero notificato:
+    // altrimenti si manda un "tutto risolto" per un guasto mai comunicato.
+    if ($prev !== 'ok' && ($state['last_notified'] ?? 0) > 0) {
         notify('RIENTRO', "Impianto tornato a produrre.\n$detail");
         logline("RIENTRO da '$prev'. $detail");
+    } elseif ($prev !== 'ok') {
+        logline("Rientro da '$prev' senza notifica: l'allarme non era mai stato inviato. $detail");
     } else {
         logline("OK. $detail");
     }
-    saveState(['status' => 'ok', 'since' => $now, 'last_notified' => 0, 'last_ok' => $now, 'hb' => $hb]);
+    saveState(['status' => 'ok', 'since' => $now, 'last_notified' => 0, 'last_ok' => $now, 'hb' => $hb] + $energy);
     exit(0);
 }
 
@@ -141,7 +155,7 @@ $elapsedMin = ($now - $since) / 60;
 if ($elapsedMin < $persistMin[$condition]) {
     logline(sprintf("PENDING '%s' %.0f/%d min. %s", $condition, $elapsedMin, $persistMin[$condition], $detail));
     saveState(['status' => $condition, 'since' => $since, 'last_notified' => $lastNotified,
-               'last_ok' => $state['last_ok'] ?? 0, 'hb' => $hb]);
+               'last_ok' => $state['last_ok'] ?? 0, 'hb' => $hb] + $energy);
     exit(0);
 }
 
@@ -149,6 +163,7 @@ $shouldNotify = ($lastNotified === 0) || (($now - $lastNotified) >= $RENOTIFY_HO
 if ($shouldNotify) {
     $titles = [
         'zero'        => 'NESSUNA PRODUZIONE',
+        'noenergy'    => 'PRODUZIONE FERMA (contatore energia bloccato)',
         'stale'       => 'INVERTER OFFLINE (nessun dato)',
         'unreachable' => 'MONITORAGGIO CIECO (API non raggiungibile)',
     ];
@@ -162,11 +177,89 @@ if ($shouldNotify) {
 }
 
 saveState(['status' => $condition, 'since' => $since, 'last_notified' => $lastNotified,
-           'last_ok' => $state['last_ok'] ?? 0, 'hb' => $hb]);
+           'last_ok' => $state['last_ok'] ?? 0, 'hb' => $hb] + $energy);
 exit(0);
 
 
 /* ============================== Funzioni ============================== */
+
+/**
+ * Decide la condizione incrociando due segnali indipendenti: la potenza
+ * istantanea e l'avanzamento del contatore di energia totale.
+ *
+ * Ritorna [condizione, dettaglio, statoContatore] dove statoContatore va
+ * risalvato nello stato ('etot' = ultimo valore visto, 'etot_ts' = quando
+ * quel valore e' comparso, cioe' l'ultima volta che il contatore si e' mosso).
+ *
+ * Di notte il cronometro del contatore viene tenuto azzerato: altrimenti la
+ * fermata fisiologica delle ore buie farebbe scattare un allarme all'alba.
+ */
+function evaluateProduction(array $node, int $now, array $state, array $cfg): array
+{
+    $powerW = (float) ($node['powerGenerating'] ?? 0);
+    $lastTs = parseLastUpdate($node['lastUpdate'] ?? null, $cfg['lastupdate_is_utc']);
+    $ageMin = $lastTs ? ($now - $lastTs) / 60 : PHP_INT_MAX;
+    $quando = $lastTs ? date('H:i', $lastTs) : 'n/d';
+
+    $isDay  = isDaytime($now, $cfg['lat'], $cfg['lon'], $cfg['day_margin_min']);
+    $etot   = isset($node['energyGeneratingTotal']) ? (float) $node['energyGeneratingTotal'] : null;
+    $prev   = isset($state['etot']) ? (float) $state['etot'] : null;
+    $ts     = (int) ($state['etot_ts'] ?? 0);
+
+    // "Mosso" solo se abbiamo un confronto vero: al primo giro non sappiamo
+    // ancora nulla e non possiamo spacciarlo per una conferma di produzione.
+    $mosso = $etot !== null && $prev !== null && abs($etot - $prev) > 0.0001;
+
+    // Il cronometro riparte se: primo giro, contatore assente, valore cambiato
+    // (anche in calo: inverter sostituito o azzerato), oppure e' notte.
+    if ($etot === null || $prev === null || $ts === 0 || $mosso || !$isDay) {
+        $ts = $now;
+    }
+    $energy    = ['etot' => $etot, 'etot_ts' => $ts];
+    $fermoMin  = ($now - $ts) / 60;
+    $noEnergia = $etot !== null && $fermoMin >= $cfg['energy_stall_min'];
+    $sottoSoglia = $powerW <= $cfg['zero_w_threshold'];
+
+    if ($ageMin > $cfg['stale_limit_min']) {
+        return ['stale', sprintf('Ultimo dato %s (%.0f min fa).',
+            $lastTs ? date('Y-m-d H:i:s', $lastTs) : 'n/d', $ageMin), $energy];
+    }
+
+    // Se l'API smettesse di mandare il contatore, non si puo' incrociare nulla:
+    // si torna al criterio della sola potenza invece di perdere l'allarme.
+    if ($isDay && $etot === null && $sottoSoglia) {
+        return ['zero', sprintf('Potenza %.0f W di giorno (soglia %d W), contatore di energia '
+            . 'non disponibile. Ultimo dato %s.', $powerW, $cfg['zero_w_threshold'], $quando), $energy];
+    }
+
+    if ($isDay && $noEnergia) {
+        $comune = sprintf('Energia totale ferma a %.1f kWh da %.0f min. Ultimo dato %s.',
+            $etot, $fermoMin, $quando);
+        return $sottoSoglia
+            ? ['zero', sprintf('Potenza %.0f W di giorno (soglia %d W). %s',
+                  $powerW, $cfg['zero_w_threshold'], $comune), $energy]
+            : ['noenergy', sprintf('Il portale segna %.0f W ma non entra energia. %s',
+                  $powerW, $comune), $energy];
+    }
+
+    // Potenza a zero mentre l'energia sale: e' il campo della potenza a mentire,
+    // non l'impianto. Nessun allarme, ma va detto nel log.
+    if ($isDay && $sottoSoglia && $mosso) {
+        return ['ok', sprintf('Potenza %.0f W (sotto soglia) ma il contatore di energia sale: '
+            . 'campo potenza inaffidabile, impianto in produzione. Totale %.1f kWh. Ultimo dato %s.',
+            $powerW, $etot, $quando), $energy];
+    }
+
+    // Potenza a zero e contatore non ancora maturo: si aspetta, non si grida.
+    if ($isDay && $sottoSoglia) {
+        return ['ok', sprintf('Potenza %.0f W di giorno: attendo conferma dal contatore '
+            . '(fermo da %.0f min su %d). Totale %.1f kWh. Ultimo dato %s.',
+            $powerW, $fermoMin, $cfg['energy_stall_min'], $etot ?? 0, $quando), $energy];
+    }
+
+    return ['ok', sprintf('Potenza %.0f W. Totale %s kWh. Ultimo dato %s.',
+        $powerW, $etot === null ? 'n/d' : sprintf('%.1f', $etot), $quando), $energy];
+}
 
 function env(string $k, string $default = ''): string {
     $v = getenv($k);

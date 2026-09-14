@@ -229,9 +229,13 @@ function handleCondition(string $condition, string $detail, ?array $live): int
     ];
 
     if ($condition === 'ok') {
-        if ($prev !== 'ok') {
+        // Come nel watchdog fotovoltaico: niente "tutto risolto" per un allarme
+        // che non e' mai stato comunicato.
+        if ($prev !== 'ok' && ($state['last_notified'] ?? 0) > 0) {
             notify('RIENTRO', "Powerwall tornato normale.\n$detail");
             logline("RIENTRO da '$prev'. $detail");
+        } elseif ($prev !== 'ok') {
+            logline("Rientro da '$prev' senza notifica: l'allarme non era mai stato inviato. $detail");
         } else {
             logline("OK. $detail");
         }

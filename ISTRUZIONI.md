@@ -125,9 +125,10 @@ Stessa pagina, **tab "Variables"**. Se non le imposti, valgono i default dello s
 |---------------------|---------|---------------------------------------|
 | `PLANT_LAT`         | 44.0637 | latitudine impianto (alba/tramonto)   |
 | `PLANT_LON`         | 12.4460 | longitudine impianto                  |
-| `ZERO_W_THRESHOLD`  | 50      | W sotto cui = "zero produzione"       |
+| `ZERO_W_THRESHOLD`  | 50      | W sotto cui = "zero produzione" — va alzato in proporzione alla taglia dell'impianto |
 | `ZERO_PERSIST_MIN`  | 90      | min di zero diurno prima dell'allarme |
 | `STALE_LIMIT_MIN`   | 45      | min senza dati = inverter offline     |
+| `ENERGY_STALL_MIN`  | 60      | min col contatore di energia fermo = impianto fermo |
 | `RENOTIFY_HOURS`    | 6       | ogni quante ore ripetere l'allarme    |
 | `LASTUPDATE_IS_UTC` | false   | metti `true` se l'API dà orari in UTC |
 | `LOOP_MINUTES`      | 55      | quanto resta vivo il job a ricontrollare |

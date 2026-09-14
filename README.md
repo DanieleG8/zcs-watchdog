@@ -16,8 +16,24 @@ Condividono i secret `MAIL_*` e i canali di notifica; per il resto sono separati
 ## Cosa rileva (fotovoltaico)
 
 - **STALE** — l'inverter non trasmette piu' dati (`lastUpdate` piu' vecchio della soglia). Controllo 24h/24.
-- **ZERO** — di giorno (tra alba e tramonto) la potenza resta sotto soglia per N minuti.
+- **ZERO** — di giorno la potenza resta sotto soglia **e** il contatore di energia non sale.
+- **NOENERGY** — di giorno la potenza dice che si produce **ma** il contatore di energia e' fermo:
+  produzione apparente, non reale.
 - **UNREACH** — l'API non risponde: warning di monitoraggio, distinto dall'allarme impianto.
+
+### Perche' due segnali e non solo la potenza
+
+Il 14/09/2026 il portale ZCS mostrava 613 W mentre l'API dava 0 W, e il contatore
+`energyGeneratingTotal` non si muoveva di un decimo di kWh da oltre un'ora (il portale
+stesso segnava "Energia Generata Giornalmente: 0 kWh"). Fidarsi di un solo campo espone
+a due errori opposti: allarmi falsi se si rompe il campo della potenza, e allarmi mancati
+se quel campo racconta una produzione che non entra in nessun contatore.
+
+Quindi: il contatore cumulativo e' la prova dei fatti. Se non sale per
+`ENERGY_STALL_MIN` minuti in pieno giorno, l'impianto non sta producendo, qualunque cosa
+dica la potenza. Se sale, non scatta nessun allarme neanche con la potenza a zero (viene
+solo annotato nel log che quel campo e' inaffidabile). Di notte il cronometro resta
+azzerato, cosi' la fermata delle ore buie non fa scattare nulla all'alba.
 
 Anti-spam: una notifica all'ingresso in allarme, una al rientro, promemoria ogni `RENOTIFY_HOURS`.
 Lo stato vive in `state.json`, ricommittato dal workflow solo quando cambia (piu' un
@@ -54,9 +70,10 @@ solo quando lo script decide di notificare. Telegram/webhook sono canali aggiunt
 |---------------------|---------|----------------------------------------|
 | `PLANT_LAT`         | 44.0637 | latitudine impianto (per alba/tramonto)|
 | `PLANT_LON`         | 12.4460 | longitudine impianto                   |
-| `ZERO_W_THRESHOLD`  | 50      | W sotto cui = "zero produzione"        |
+| `ZERO_W_THRESHOLD`  | 50      | W sotto cui = "zero produzione" (alzalo in proporzione all'impianto: su 90 kWp, 50 W non distinguono un guasto da un impianto sano) |
 | `ZERO_PERSIST_MIN`  | 90      | min di zero diurno prima dell'allarme  |
 | `STALE_LIMIT_MIN`   | 45      | min senza dati = inverter offline      |
+| `ENERGY_STALL_MIN`  | 60      | min di contatore energia fermo = impianto fermo |
 | `RENOTIFY_HOURS`    | 6       | promemoria mentre resta in allarme     |
 | `LASTUPDATE_IS_UTC` | false   | metti `true` se l'API restituisce UTC  |
 | `LOOP_MINUTES`      | 55      | durata del loop interno (vedi sotto)   |
@@ -107,5 +124,5 @@ esterno: un servizio cron gratuito (es. cron-job.org) che chiami
   cambia la costante `ENDPOINT` in `watchdog.php`.
 - Le modalita' di avvio manuale sono: `run` (normale, in loop), `once` (un solo controllo),
   `dump` (stampa i valori grezzi, non tocca lo stato), `test` (invia una notifica di prova).
-- Prove della logica del watchdog Powerwall: `php tests/tesla_test.php`.
+- Prove della logica: `php tests/watchdog_test.php` (fotovoltaico) e `php tests/tesla_test.php` (Powerwall).
 - Progetto non affiliato a Zucchetti Centro Sistemi S.p.A. ne' a Tesla Inc.
