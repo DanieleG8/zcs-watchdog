@@ -79,7 +79,27 @@ Carica **solo** `com.tesla.3p.public-key.pem` in modo che risponda esattamente q
 https://tuodominio.it/.well-known/appspecific/com.tesla.3p.public-key.pem
 ```
 
-Verifica aprendolo nel browser: devi vedere il contenuto `-----BEGIN PUBLIC KEY-----`.
+⚠️ **Il `www` conta.** Il dominio dev'essere lo stesso identico dell'"URL di origine
+consentiti" del Passo 1: se li hai registrati come `https://www.tuodominio.it`, allora
+la chiave va su `www.tuodominio.it` e anche `TESLA_PUBLIC_KEY_DOMAIN` sara' `www.tuodominio.it`.
+Un redirect da `www` al dominio nudo (o viceversa) fa fallire la registrazione del Passo 5.
+
+Verifica prima di andare avanti:
+
+```bash
+curl -sSI https://www.tuodominio.it/.well-known/appspecific/com.tesla.3p.public-key.pem | head -1
+curl -sS  https://www.tuodominio.it/.well-known/appspecific/com.tesla.3p.public-key.pem
+```
+
+La prima riga dev'essere `200` (non `301`/`302`) e il contenuto deve iniziare con
+`-----BEGIN PUBLIC KEY-----`. Due trappole frequenti:
+
+- sui CMS con le "pretty URL" (WordPress e simili) il rewrite puo' inghiottire il
+  percorso e restituire la **pagina HTML del sito con codice 200**: sembra a posto,
+  ma Tesla non trova la chiave;
+- molti pannelli di hosting nascondono o bloccano le cartelle che iniziano con un
+  punto: se il file non si vede, quasi sempre e' `.well-known` bloccata.
+
 La chiave **privata** tienila da parte (per il solo monitoraggio energia non serve,
 serve ai comandi verso i veicoli): non caricarla da nessuna parte.
 
