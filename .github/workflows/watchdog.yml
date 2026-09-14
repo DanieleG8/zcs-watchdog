@@ -70,6 +70,7 @@ jobs:
           STALE_LIMIT_MIN:   ${{ vars.STALE_LIMIT_MIN }}
           ENERGY_WINDOW_MIN: ${{ vars.ENERGY_WINDOW_MIN }}
           RENOTIFY_HOURS:    ${{ vars.RENOTIFY_HOURS }}
+          GUIDE_URL:         ${{ vars.GUIDE_URL }}
           LASTUPDATE_IS_UTC: ${{ vars.LASTUPDATE_IS_UTC }}
           TZ: Europe/Rome
           # --- Loop interno (rimedio ai cron saltati da GitHub) ---

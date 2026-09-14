@@ -80,6 +80,7 @@ jobs:
           TESLA_SOC_MIN_PERCENT:    ${{ vars.TESLA_SOC_MIN_PERCENT }}
           TESLA_PUBLIC_KEY_DOMAIN:  ${{ vars.TESLA_PUBLIC_KEY_DOMAIN }}
           RENOTIFY_HOURS:           ${{ vars.RENOTIFY_HOURS }}
+          GUIDE_URL:                ${{ vars.GUIDE_URL }}
           TZ: Europe/Rome
           # --- Loop interno ---
           WD_MODE:           ${{ inputs.mode || 'run' }}

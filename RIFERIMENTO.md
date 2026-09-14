@@ -13,6 +13,32 @@ se cade il fotovoltaico la batteria continua a essere sorvegliata, e viceversa.
 
 ---
 
+## 0. La guida per chi le mail le riceve
+
+Ogni notifica si chiude con un link a una spiegazione in parole povere:
+
+    https://claude.ai/code/artifact/19aa137e-428a-4742-89c8-e0df7f06aaa9
+
+Chi riceve la mail spesso non e' chi ha configurato il sistema, e un oggetto come
+`MONITORAGGIO CIECO` da solo non dice a nessuno cosa fare. La pagina ordina le
+mail per urgenza e per ognuna dice cosa significa e chi va chiamato.
+
+> La pagina e' **privata**: perche' il link serva a qualcosa va condivisa dal menu
+> della pagina stessa con chi riceve gli avvisi.
+
+Per cambiare indirizzo basta la Variable `GUIDE_URL` del repo, senza toccare il
+codice. Per togliere il link dalle mail il valore va messo a `off`: lasciarla
+vuota **non** basta, perche' una Variable non impostata arriva allo script come
+stringa vuota e vale il predefinito. Il valore predefinito sta nella
+costante `GUIDE_URL` di `watchdog.php` e `tesla.php`, e
+`tests/guida_test.php` verifica che i due coincidano e che sia lo stesso scritto qui.
+
+**Se cambi il funzionamento, questa pagina va aggiornata insieme a questo file**:
+`tests/guida_test.php` blocca la CI se un allarme del codice non compare in
+RIFERIMENTO.md, ma la pagina per non tecnici nessuna macchina puo' controllarla.
+
+---
+
 ## 1. Le mail
 
 Tutte arrivano dallo stesso mittente (`ZCS Watchdog`) allo stesso indirizzo.

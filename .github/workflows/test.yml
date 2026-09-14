@@ -1,0 +1,52 @@
+name: Prove
+
+# I due watchdog girano da soli e mandano mail: un errore non lo vede nessuno
+# finche' non manca un allarme vero, o ne arriva uno falso. Le prove girano
+# quindi a ogni push e su ogni PR, non solo quando qualcuno si ricorda.
+on:
+  push:
+    branches: ["**"]
+    paths-ignore:
+      - "state.json"
+      - "state-tesla.json"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: prove-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  prove:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          extensions: curl, json, sodium
+          coverage: none
+
+      - name: Sintassi
+        run: |
+          php -l watchdog.php
+          php -l tesla.php
+
+      - name: Fotovoltaico
+        run: php tests/watchdog_test.php
+
+      - name: Powerwall
+        run: php tests/tesla_test.php
+
+      # Se questa fallisce non c'e' un baco nel codice: c'e' la guida rimasta
+      # indietro. Va aggiornato RIFERIMENTO.md, e con lui la pagina per chi le
+      # mail le riceve (l'indirizzo e' in cima a quel file).
+      - name: Guida allineata al codice
+        run: php tests/guida_test.php
