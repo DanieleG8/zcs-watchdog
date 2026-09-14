@@ -82,8 +82,8 @@ solo quando lo script decide di notificare. Telegram/webhook sono canali aggiunt
 
 | Variable            | Default | Note                                   |
 |---------------------|---------|----------------------------------------|
-| `PLANT_LAT`         | 44.0637 | latitudine impianto (per alba/tramonto)|
-| `PLANT_LON`         | 12.4460 | longitudine impianto                   |
+| `PLANT_LAT`         | 44.06   | latitudine impianto (per alba/tramonto)|
+| `PLANT_LON`         | 12.45   | longitudine impianto                   |
 | `ZERO_W_THRESHOLD`  | 50      | W sotto cui = "zero produzione" (alzalo in proporzione all'impianto: su 90 kWp, 50 W non distinguono un guasto da un impianto sano) |
 | `ZERO_PERSIST_MIN`  | 90      | attesa del solo ripiego senza contatore |
 | `STALE_LIMIT_MIN`   | 45      | min senza dati = inverter offline      |

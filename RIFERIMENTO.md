@@ -94,7 +94,7 @@ autenticazione con `ZCS_CLIENT_CODE` + `ZCS_AUTH_KEY`, impianto identificato da
 | `lastUpdate` | ora dell'ultimo dato dell'inverter | decide lo STALE |
 
 Alba e tramonto **non** arrivano dall'API: sono calcolati in locale dalle
-coordinate dell'impianto (`PLANT_LAT` 44.06255, `PLANT_LON` 12.45047) con
+coordinate dell'impianto (Variables `PLANT_LAT` / `PLANT_LON`) con
 40 minuti di margine per lato. Fuori da quella finestra la misura resta
 ancorata al presente e nessun allarme di produzione puo' scattare: di notte
 non produrre e' normale.
@@ -109,7 +109,7 @@ capo, anche prima dei 60 minuti.
 ### Batteria — Fleet API Tesla
 
 Endpoint europeo `https://fleet-api.prd.eu.vn.cloud.tesla.com`, chiamata
-`/api/1/energy_sites/1689425988476896/live_status`, autenticazione OAuth con
+`/api/1/energy_sites/<TESLA_SITE_ID>/live_status`, autenticazione OAuth con
 rotazione automatica del refresh token.
 
 | Campo | Cosa e' | A cosa serve |

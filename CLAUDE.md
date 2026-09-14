@@ -61,6 +61,26 @@ introdotte.
   chilowatt dalla rete. Fidarsi dell'etichetta significava una mail di blackout
   ogni quattro ore.
 
+## Il repository e' pubblico
+
+Chiunque legge il codice, la cronologia e **i log dei workflow**. I segreti
+restano cifrati e mascherati, ma tutto il resto e' in chiaro. Quindi:
+
+- **Mai un valore reale come dato di prova.** Un `code` OAuth gia' consumato non
+  serve piu' a nessuno, ma resta nella cronologia per sempre e in un audit
+  sembra una fuga di credenziali. Dati finti e riconoscibili come tali.
+- **I valori pubblici finiscono nei log** perche' i workflow li passano come
+  `env:` e Actions stampa il blocco: client_id, redirect_uri, site_id, soglie,
+  coordinate. Quello che non deve essere leggibile va in un **Secret**, non in
+  una Variable, anche quando "non e' proprio un segreto".
+- **Niente dettagli dell'impianto nei documenti**: coordinate esatte, numeri di
+  serie, identificativi del sito. Nei testi si citano i nomi delle Variables,
+  non i loro valori.
+- I workflow che portano secret (`watchdog.yml`, `tesla.yml`) **non devono mai**
+  avere un trigger `pull_request`: chiunque puo' aprire una PR da un fork. Le
+  prove girano su `pull_request` proprio perche' non toccano nessun secret e
+  hanno `permissions: contents: read`.
+
 ## Cose che si rompono in silenzio
 
 - **Il refresh token Tesla ruota a ogni rinnovo** e va risalvato nel secret del

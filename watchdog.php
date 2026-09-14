@@ -45,8 +45,10 @@ $VERIFY_SSL  = envBool('ZCS_VERIFY_SSL', false);
 const HTTP_TIMEOUT = 30;
 
 // Posizione impianto (per alba/tramonto)
-$LAT = (float) env('PLANT_LAT', '44.0637');
-$LON = (float) env('PLANT_LON', '12.4460');
+// Precisione volutamente grossolana: per alba e tramonto bastano pochi km,
+// e le coordinate esatte di casa non hanno motivo di stare in chiaro.
+$LAT = (float) env('PLANT_LAT', '44.06');
+$LON = (float) env('PLANT_LON', '12.45');
 
 // Soglie
 $ZERO_W_THRESHOLD    = (int) env('ZERO_W_THRESHOLD', '50');
