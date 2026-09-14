@@ -13,6 +13,9 @@ Nel repo convivono due watchdog indipendenti:
 
 Condividono i secret `MAIL_*` e i canali di notifica; per il resto sono separati.
 
+**[RIFERIMENTO.md](RIFERIMENTO.md)** elenca tutte le mail che i due watchdog possono
+mandare, da quale campo dell'API nasce ogni valore, e le soglie attive.
+
 ## Cosa rileva (fotovoltaico)
 
 - **STALE** — l'inverter non trasmette piu' dati (`lastUpdate` piu' vecchio della soglia). Controllo 24h/24.
