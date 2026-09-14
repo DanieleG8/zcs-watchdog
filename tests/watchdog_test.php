@@ -30,8 +30,8 @@ $cfg = [
     'stale_limit_min'   => 60,
     'energy_window_min' => 60,
     'lastupdate_is_utc' => false,
-    'lat'               => 44.06255,
-    'lon'               => 12.45047,
+    'lat'               => 44.06,
+    'lon'               => 12.45,
     'day_margin_min'    => 40,
 ];
 $giorno = strtotime('2026-09-14 12:00:00');

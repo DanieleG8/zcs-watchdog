@@ -123,8 +123,8 @@ Stessa pagina, **tab "Variables"**. Se non le imposti, valgono i default dello s
 
 | Nome                | Default | A cosa serve                          |
 |---------------------|---------|---------------------------------------|
-| `PLANT_LAT`         | 44.0637 | latitudine impianto (alba/tramonto)   |
-| `PLANT_LON`         | 12.4460 | longitudine impianto                  |
+| `PLANT_LAT`         | 44.06   | latitudine impianto (alba/tramonto)   |
+| `PLANT_LON`         | 12.45   | longitudine impianto                  |
 | `ZERO_W_THRESHOLD`  | 50      | watt medi sotto cui = "non sta producendo" — **va alzato in proporzione alla taglia**: su un impianto da ~450 kWh/giorno metti 2000-3000 |
 | `ZERO_PERSIST_MIN`  | 90      | min di zero diurno prima dell'allarme |
 | `STALE_LIMIT_MIN`   | 45      | min senza dati = inverter offline     |

@@ -193,7 +193,9 @@ check('spiega cosa manca', 'GH_SECRETS_TOKEN non impostato', $err);
 
 echo "\nestraiCode — il code si puo' incollare come URL intero\n";
 
-$atteso = 'EU_u1ta0xfsfztdjlrxwg1wf9v237xzmaxd7miy2mxcf9zj2avg';
+// Valore inventato: un code vero, anche gia' consumato, non si commenta
+// in chiaro su un repo pubblico.
+$atteso = 'EU_codedidprovanonvaleniente0000000000000000000000';
 check('solo il code -> invariato', $atteso, estraiCode($atteso));
 check('spazi intorno -> ripuliti', $atteso, estraiCode("  $atteso\n"));
 check(
