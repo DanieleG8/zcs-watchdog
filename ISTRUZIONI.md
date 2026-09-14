@@ -11,7 +11,7 @@ si lanciano dal pannello Actions.
 
 ```
 zcs-watchdog/
-├── .github/workflows/watchdog.yml   # il job schedulato (cron 15 min + avvio manuale + invio email)
+├── .github/workflows/watchdog.yml   # il job schedulato (cron + loop interno, avvio manuale, invio email)
 ├── watchdog.php                     # lo script di controllo
 ├── state.json                       # stato iniziale (verra' aggiornato dal workflow)
 ├── .gitignore
@@ -36,7 +36,7 @@ un server **SMTP** (il tuo di dominio, oppure Gmail). Su GitHub non si può usar
 2. **Repository name**: `zcs-watchdog`
 3. Visibilità:
    - **Public** → minuti di Actions *illimitati* (consigliato: qui non c'è nulla di sensibile nel codice, le credenziali stanno nei Secrets).
-   - **Private** → 2000 min/mese inclusi. A 15 minuti consumi ~2880 min/mese, quindi **su private supereresti il limite**: o lo tieni public, o porti il cron a 30 minuti (`*/30 * * * *`).
+   - **Private** → 2000 min/mese inclusi: con il loop interno (vedi sotto) li esaurisci in pochi giorni. Tieni il repo **public**, oppure abbassa di molto `LOOP_MINUTES`.
 4. **Non** aggiungere README/gitignore (li porti tu). Crea il repo.
 
 ---
@@ -125,11 +125,14 @@ Stessa pagina, **tab "Variables"**. Se non le imposti, valgono i default dello s
 |---------------------|---------|---------------------------------------|
 | `PLANT_LAT`         | 44.0637 | latitudine impianto (alba/tramonto)   |
 | `PLANT_LON`         | 12.4460 | longitudine impianto                  |
-| `ZERO_W_THRESHOLD`  | 50      | W sotto cui = "zero produzione"       |
+| `ZERO_W_THRESHOLD`  | 50      | watt medi sotto cui = "non sta producendo" — **va alzato in proporzione alla taglia**: su un impianto da ~450 kWh/giorno metti 2000-3000 |
 | `ZERO_PERSIST_MIN`  | 90      | min di zero diurno prima dell'allarme |
 | `STALE_LIMIT_MIN`   | 45      | min senza dati = inverter offline     |
+| `ENERGY_WINDOW_MIN` | 60      | minuti su cui si misura l'energia realmente entrata |
 | `RENOTIFY_HOURS`    | 6       | ogni quante ore ripetere l'allarme    |
 | `LASTUPDATE_IS_UTC` | false   | metti `true` se l'API dà orari in UTC |
+| `LOOP_MINUTES`      | 55      | quanto resta vivo il job a ricontrollare |
+| `LOOP_INTERVAL_SEC` | 300     | secondi tra un controllo e il successivo |
 
 👉 Metti `PLANT_LAT`/`PLANT_LON` con le coordinate reali del tuo impianto.
 
@@ -150,7 +153,7 @@ Stessa pagina, **tab "Variables"**. Se non le imposti, valgono i default dello s
 
 ## Passo 8 — Attivazione definitiva
 
-Da qui parte da solo ogni 15 minuti.
+Da qui parte da solo: il cron sveglia il job, che poi ricontrolla ogni 5 minuti per ~55 minuti.
 - Se qualcosa non produce → ricevi l'email di allarme; al ritorno alla normalità → email di rientro.
 - Prima esecuzione normale: **Run workflow → mode: `run`** (o aspetta il cron).
 
@@ -158,8 +161,14 @@ Da qui parte da solo ogni 15 minuti.
 
 ## Note e possibili intoppi
 
-- **Ritardi del cron**: le esecuzioni schedulate di GitHub possono slittare di qualche minuto o
-  accorparsi. Per un watchdog fotovoltaico è irrilevante.
+- **Ritardi del cron**: le esecuzioni schedulate di GitHub slittano parecchio — misurato sul campo,
+  con `*/15` ne partivano ~17 al giorno invece di 96, con buchi fino a 6 ore. Per questo il job,
+  una volta partito, **resta vivo e ripete il controllo ogni 5 minuti per ~55 minuti**
+  (`LOOP_MINUTES` / `LOOP_INTERVAL_SEC`). Se scatta un allarme esce subito e manda la mail.
+  Nel log del run vedrai la sequenza `--- controllo #1, #2, ... ---`.
+- **Esecuzioni "cancelled" nella lista Actions**: normale. Se il cron sveglia un job mentre
+  un altro sta ancora girando, quello nuovo resta in coda e GitHub cancella gli eventuali
+  doppioni in attesa. Non è un errore e non consuma nulla.
 - **Disabilitazione dopo 60 giorni**: GitHub sospende i cron se il repo non riceve commit.
   Lo script scrive un "battito" giornaliero in `state.json` che il workflow committa: il repo
   resta attivo anche a impianto sano.

@@ -1,0 +1,154 @@
+name: Tesla Powerwall Watchdog
+
+on:
+  schedule:
+    # Come per il watchdog fotovoltaico: il cron serve solo a svegliare il job,
+    # la cadenza reale la fa il loop interno (LOOP_MINUTES / LOOP_INTERVAL_SEC).
+    - cron: "*/15 * * * *"
+  repository_dispatch:
+    types: [tesla-check]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Modalita' di esecuzione"
+        type: choice
+        default: run
+        options:
+          - run       # esecuzione normale (in loop)
+          - once      # un solo controllo, poi esce
+          - dump      # stampa il live_status grezzo
+          - test      # invia una notifica di prova
+          - sites     # elenca i siti energia (per ricavare TESLA_SITE_ID)
+          - authurl   # stampa l'URL di autorizzazione Tesla (una tantum)
+          - register  # registra il partner account sul dominio (una tantum)
+          - exchange  # scambia il code della redirect in refresh token (una tantum)
+      code:
+        description: "Solo per mode=exchange: il valore di ?code= della redirect"
+        type: string
+        required: false
+
+# Serve per ricommittare state-tesla.json
+permissions:
+  contents: write
+
+concurrency:
+  group: tesla-watchdog
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          # sodium serve a cifrare il refresh token quando viene risalvato nei Secrets
+          extensions: curl, json, sodium
+          coverage: none
+
+      - name: Run watchdog Powerwall
+        id: wd
+        env:
+          # --- App Tesla (developer.tesla.com) ---
+          TESLA_CLIENT_ID:     ${{ secrets.TESLA_CLIENT_ID }}
+          TESLA_CLIENT_SECRET: ${{ secrets.TESLA_CLIENT_SECRET }}
+          TESLA_REFRESH_TOKEN: ${{ secrets.TESLA_REFRESH_TOKEN }}
+          TESLA_REDIRECT_URI:  ${{ secrets.TESLA_REDIRECT_URI }}
+          TESLA_SITE_ID:       ${{ secrets.TESLA_SITE_ID }}
+          # PAT con permesso "Secrets: write": serve a risalvare il refresh token
+          # che Tesla ruota a ogni rinnovo. Senza, il monitoraggio muore in 24h.
+          GH_SECRETS_TOKEN:    ${{ secrets.GH_SECRETS_TOKEN }}
+          # --- Canali extra opzionali ---
+          TG_BOT_TOKEN:        ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID:          ${{ secrets.TG_CHAT_ID }}
+          WEBHOOK_URL:         ${{ secrets.WEBHOOK_URL }}
+          # --- Variables (o default nello script) ---
+          TESLA_REGION:             ${{ vars.TESLA_REGION }}
+          TESLA_STALE_LIMIT_MIN:    ${{ vars.TESLA_STALE_LIMIT_MIN }}
+          TESLA_OFFGRID_PERSIST_MIN: ${{ vars.TESLA_OFFGRID_PERSIST_MIN }}
+          TESLA_UNREACH_PERSIST_MIN: ${{ vars.TESLA_UNREACH_PERSIST_MIN }}
+          TESLA_SOC_MIN_PERCENT:    ${{ vars.TESLA_SOC_MIN_PERCENT }}
+          TESLA_PUBLIC_KEY_DOMAIN:  ${{ vars.TESLA_PUBLIC_KEY_DOMAIN }}
+          RENOTIFY_HOURS:           ${{ vars.RENOTIFY_HOURS }}
+          TZ: Europe/Rome
+          # --- Loop interno ---
+          WD_MODE:           ${{ inputs.mode || 'run' }}
+          WD_CODE:           ${{ inputs.code }}
+          LOOP_MINUTES:      ${{ vars.LOOP_MINUTES || '55' }}
+          LOOP_INTERVAL_SEC: ${{ vars.TESLA_LOOP_INTERVAL_SEC || '600' }}
+        shell: bash
+        run: |
+          set +e -uo pipefail
+
+          case "$WD_MODE" in
+            dump)     php tesla.php --dump;     exit $? ;;
+            test)     php tesla.php --test;     exit $? ;;
+            sites)    php tesla.php --sites;    exit $? ;;
+            authurl)  php tesla.php --authurl;  exit $? ;;
+            register) php tesla.php --register; exit $? ;;
+            exchange) php tesla.php --exchange "$WD_CODE"; exit $? ;;
+            once)     php tesla.php;            exit $? ;;
+          esac
+
+          deadline=$(( $(date +%s) + LOOP_MINUTES * 60 ))
+          n=0
+          while :; do
+            n=$(( n + 1 ))
+            echo "--- controllo #$n ($(date -u +%H:%M:%S) UTC) ---"
+            php tesla.php
+            rc=$?
+            [ "$rc" -ne 0 ] && echo "ATTENZIONE: tesla.php uscito con codice $rc"
+
+            if grep -qx 'notify=1' "$GITHUB_OUTPUT" 2>/dev/null; then
+              echo "Notifica richiesta: esco dal loop per inviarla."
+              break
+            fi
+
+            if [ $(( deadline - $(date +%s) )) -lt "$LOOP_INTERVAL_SEC" ]; then
+              echo "Finestra esaurita: chiudo (ripartira' il prossimo run schedulato)."
+              break
+            fi
+            sleep "$LOOP_INTERVAL_SEC"
+          done
+          echo "Loop terminato dopo $n controlli."
+
+      - name: Send email
+        if: steps.wd.outputs.notify == '1'
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.MAIL_SERVER }}
+          server_port:    ${{ secrets.MAIL_PORT }}
+          secure:         true
+          username:       ${{ secrets.MAIL_USERNAME }}
+          password:       ${{ secrets.MAIL_PASSWORD }}
+          subject:        ${{ steps.wd.outputs.subject }}
+          to:             ${{ secrets.MAIL_TO }}
+          from:           ZCS Watchdog <${{ secrets.MAIL_FROM }}>
+          body:           ${{ steps.wd.outputs.body }}
+
+      - name: Persist state
+        if: always()
+        shell: bash
+        run: |
+          set -uo pipefail
+          if git diff --quiet -- state-tesla.json; then
+            echo "state-tesla.json invariato, nessun commit."
+            exit 0
+          fi
+          git config user.name  "zcs-watchdog[bot]"
+          git config user.email "actions@users.noreply.github.com"
+          git add state-tesla.json
+          git commit -m "state tesla: aggiornamento $(date -u +%FT%TZ)"
+          for i in 1 2 3; do
+            git push && exit 0
+            echo "Push fallito (tentativo $i): riallineo e riprovo."
+            git pull --rebase --autostash origin "${GITHUB_REF_NAME}" || true
+            sleep $(( i * 5 ))
+          done
+          echo "Push dello stato non riuscito." >&2
+          exit 1

@@ -2,8 +2,17 @@ name: ZCS Watchdog
 
 on:
   schedule:
-    # Ogni 15 minuti (UTC). GitHub puo' ritardare/accorpare le esecuzioni schedulate.
+    # Lo scheduler di GitHub e' inaffidabile: dichiarare "*/15" NON significa
+    # girare ogni 15 minuti (in pratica ne parte una ogni 2-6 ore). Per questo
+    # ogni esecuzione, una volta partita, resta viva e ricontrolla in loop
+    # (vedi LOOP_MINUTES / LOOP_INTERVAL_SEC nello step "Run watchdog").
+    # Il cron fitto serve solo a farsi "svegliare" il prima possibile.
     - cron: "*/15 * * * *"
+  # Trigger esterno opzionale (es. cron-job.org -> API GitHub) se un giorno
+  # si vuole una cadenza garantita:
+  #   POST /repos/OWNER/REPO/dispatches  {"event_type":"zcs-check"}
+  repository_dispatch:
+    types: [zcs-check]
   workflow_dispatch:
     inputs:
       mode:
@@ -11,7 +20,8 @@ on:
         type: choice
         default: run
         options:
-          - run    # esecuzione normale
+          - run    # esecuzione normale (in loop)
+          - once   # un solo controllo, poi esce (utile per prove veloci)
           - dump   # stampa potenza e lastUpdate grezzi (calibrazione)
           - test   # invia una notifica di prova
 
@@ -19,6 +29,8 @@ on:
 permissions:
   contents: write
 
+# Una sola esecuzione per volta. Le altre restano in coda e partono appena
+# questa finisce: cosi' la copertura resta continua invece di avere buchi.
 concurrency:
   group: zcs-watchdog
   cancel-in-progress: false
@@ -26,9 +38,11 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
+    # Rete di sicurezza: deve essere > LOOP_MINUTES + qualche minuto di setup.
+    timeout-minutes: 70
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -54,11 +68,47 @@ jobs:
           ZERO_W_THRESHOLD:  ${{ vars.ZERO_W_THRESHOLD }}
           ZERO_PERSIST_MIN:  ${{ vars.ZERO_PERSIST_MIN }}
           STALE_LIMIT_MIN:   ${{ vars.STALE_LIMIT_MIN }}
+          ENERGY_WINDOW_MIN: ${{ vars.ENERGY_WINDOW_MIN }}
           RENOTIFY_HOURS:    ${{ vars.RENOTIFY_HOURS }}
           LASTUPDATE_IS_UTC: ${{ vars.LASTUPDATE_IS_UTC }}
           TZ: Europe/Rome
-        # In dispatch usa la modalita' scelta; su schedule gira sempre in modalita' normale.
-        run: php watchdog.php ${{ inputs.mode == 'dump' && '--dump' || inputs.mode == 'test' && '--test' || '' }}
+          # --- Loop interno (rimedio ai cron saltati da GitHub) ---
+          WD_MODE:           ${{ inputs.mode || 'run' }}
+          LOOP_MINUTES:      ${{ vars.LOOP_MINUTES || '55' }}
+          LOOP_INTERVAL_SEC: ${{ vars.LOOP_INTERVAL_SEC || '300' }}
+        shell: bash
+        run: |
+          set +e -uo pipefail
+
+          case "$WD_MODE" in
+            dump) php watchdog.php --dump; exit $? ;;
+            test) php watchdog.php --test; exit $? ;;
+            once) php watchdog.php;        exit $? ;;
+          esac
+
+          deadline=$(( $(date +%s) + LOOP_MINUTES * 60 ))
+          n=0
+          while :; do
+            n=$(( n + 1 ))
+            echo "--- controllo #$n ($(date -u +%H:%M:%S) UTC) ---"
+            php watchdog.php
+            rc=$?
+            [ "$rc" -ne 0 ] && echo "ATTENZIONE: watchdog.php uscito con codice $rc"
+
+            # Se lo script ha deciso di notificare, esco subito: la mail parte
+            # nello step successivo (max ~LOOP_INTERVAL_SEC di ritardo, non 55 min).
+            if grep -qx 'notify=1' "$GITHUB_OUTPUT" 2>/dev/null; then
+              echo "Notifica richiesta: esco dal loop per inviarla."
+              break
+            fi
+
+            if [ $(( deadline - $(date +%s) )) -lt "$LOOP_INTERVAL_SEC" ]; then
+              echo "Finestra esaurita: chiudo (ripartira' il prossimo run schedulato)."
+              break
+            fi
+            sleep "$LOOP_INTERVAL_SEC"
+          done
+          echo "Loop terminato dopo $n controlli."
 
       - name: Send email
         # Parte solo quando lo script ha deciso di notificare (allarme / rientro / test)
@@ -76,13 +126,23 @@ jobs:
           body:           ${{ steps.wd.outputs.body }}
 
       - name: Persist state
+        if: always()
+        shell: bash
         run: |
-          if ! git diff --quiet -- state.json; then
-            git config user.name  "zcs-watchdog[bot]"
-            git config user.email "actions@users.noreply.github.com"
-            git add state.json
-            git commit -m "state: aggiornamento $(date -u +%FT%TZ)"
-            git push
-          else
+          set -uo pipefail
+          if git diff --quiet -- state.json; then
             echo "state.json invariato, nessun commit."
+            exit 0
           fi
+          git config user.name  "zcs-watchdog[bot]"
+          git config user.email "actions@users.noreply.github.com"
+          git add state.json
+          git commit -m "state: aggiornamento $(date -u +%FT%TZ)"
+          for i in 1 2 3; do
+            git push && exit 0
+            echo "Push fallito (tentativo $i): riallineo e riprovo."
+            git pull --rebase --autostash origin "${GITHUB_REF_NAME}" || true
+            sleep $(( i * 5 ))
+          done
+          echo "Push dello stato non riuscito." >&2
+          exit 1
