@@ -23,7 +23,7 @@ on:
           - register  # registra il partner account sul dominio (una tantum)
           - exchange  # scambia il code della redirect in refresh token (una tantum)
       code:
-        description: "Solo per mode=exchange: il valore di ?code= della redirect"
+        description: "Solo per mode=exchange: l'URL intero della redirect (o il solo code)"
         type: string
         required: false
 

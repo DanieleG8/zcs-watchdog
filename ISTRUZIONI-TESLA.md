@@ -173,13 +173,21 @@ la chiave pubblica non raggiungibile all'indirizzo esatto del Passo 2.
 ## Passo 6 — Autorizza e ottieni il refresh token
 
 1. **Run workflow → mode: `authurl`**. Nel log trovi un indirizzo lunghissimo.
-2. Aprilo nel browser, accedi con l'account Tesla proprietario, autorizza.
-3. Finirai su una pagina del tuo dominio (anche un 404 va bene): nella barra degli
-   indirizzi c'e' `?code=XXXXX`. **Copia solo il valore di `code`.**
-4. **Run workflow → mode: `exchange`**, incolla il code nel campo `code`, avvia.
+2. **Prima** di aprirlo, tieni gia' aperta in un'altra scheda la pagina
+   *Actions → Tesla Powerwall Watchdog → Run workflow*: il code vive **circa 5 minuti**
+   e il tempo che serve a passarlo a qualcun altro basta a farlo scadere.
+3. Apri l'indirizzo, accedi con l'account Tesla proprietario, autorizza.
+4. Finirai su una pagina del tuo dominio (anche un 404 va bene): nella barra degli
+   indirizzi c'e' `?code=XXXXX`. **Copia l'indirizzo intero.**
+5. **Run workflow → mode: `exchange`**, incolla l'indirizzo nel campo `code`, avvia.
+   Lo script si ritaglia da solo il parametro `code`; se preferisci puoi incollare
+   anche il solo valore.
 
 Il log deve dire "Refresh token ottenuto e salvato nel secret TESLA_REFRESH_TOKEN".
 Il token non viene mai stampato nei log.
+
+> Se ottieni `invalid_auth_code`, il code e' scaduto o e' gia' stato usato: non c'e'
+> niente da riparare, si rifa' il passo 1 e si va piu' spediti.
 
 > Il `code` dura pochi minuti ed e' monouso, ma su un repo **pubblico** il valore
 > che scrivi nel campo resta visibile nella scheda del run: fai il passo 4 subito
