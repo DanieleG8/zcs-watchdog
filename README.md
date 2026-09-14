@@ -1,8 +1,8 @@
 # ZCS Watchdog
 
 Controllo automatico dell'inverter fotovoltaico **ZCS Azzurro** tramite GitHub Actions.
-Ogni 15 minuti interroga l'API realtime e avvisa (Telegram / webhook) se l'impianto
-smette di produrre o l'inverter va offline.
+Interroga l'API realtime ogni 5 minuti e avvisa (email, piu' Telegram / webhook opzionali)
+se l'impianto smette di produrre o l'inverter va offline.
 
 ## Cosa rileva
 
@@ -50,6 +50,8 @@ solo quando lo script decide di notificare. Telegram/webhook sono canali aggiunt
 | `STALE_LIMIT_MIN`   | 45      | min senza dati = inverter offline      |
 | `RENOTIFY_HOURS`    | 6       | promemoria mentre resta in allarme     |
 | `LASTUPDATE_IS_UTC` | false   | metti `true` se l'API restituisce UTC  |
+| `LOOP_MINUTES`      | 55      | durata del loop interno (vedi sotto)   |
+| `LOOP_INTERVAL_SEC` | 300     | secondi tra un controllo e il successivo|
 
 ### 3. Calibrazione (consigliata)
 In locale, con le variabili d'ambiente valorizzate:
@@ -63,7 +65,29 @@ Guarda il formato di `lastUpdate`: se e' in UTC, imposta la variabile `LASTUPDAT
 
 ### 4. Attivazione
 Vai in **Actions**, abilita i workflow, e lancia una volta a mano (**Run workflow**)
-per verificare che giri. Poi parte da solo ogni 15 minuti.
+per verificare che giri. Poi parte da solo.
+
+## Cadenza reale dei controlli
+
+Lo scheduler `cron` di GitHub **non e' affidabile**: con `*/15 * * * *` (96 esecuzioni
+attese al giorno) sul campo ne partivano circa 17, con buchi medi di 3-4 ore e punte
+di 6. Un watchdog che guarda l'impianto ogni 6 ore non serve a molto.
+
+Rimedio adottato: **ogni esecuzione, una volta partita, resta viva** e ripete il
+controllo ogni `LOOP_INTERVAL_SEC` secondi per `LOOP_MINUTES` minuti. Il cron fitto
+serve solo a farsi svegliare il prima possibile; la copertura la garantisce il loop.
+
+- Se scatta una notifica, il loop **esce subito** e la mail parte nello step successivo:
+  il ritardo massimo e' un intervallo (5 min), non l'intera finestra.
+- `concurrency` impedisce sovrapposizioni: le esecuzioni in eccesso restano in coda e
+  partono appena la precedente finisce, quindi la copertura resta continua.
+- Per consumare meno runner (irrilevante su repo pubblico, dove i minuti sono illimitati)
+  basta abbassare `LOOP_MINUTES`. Se lo alzi sopra ~60, alza anche `timeout-minutes`
+  nel workflow.
+
+Se un giorno vuoi una cadenza garantita al minuto, il workflow accetta gia' un trigger
+esterno: un servizio cron gratuito (es. cron-job.org) che chiami
+`POST /repos/OWNER/REPO/dispatches` con `{"event_type":"zcs-check"}` e un token.
 
 ## Note
 
@@ -72,4 +96,6 @@ per verificare che giri. Poi parte da solo ogni 15 minuti.
 - `CLIENT_CODE`, `AUTH_KEY` e `THING_KEY` vanno richiesti a ZCS/Zucchetti (accesso API).
   L'endpoint qui usato e' quello noto pubblicamente: se ZCS te ne fornisce uno aggiornato,
   cambia la costante `ENDPOINT` in `watchdog.php`.
+- Le modalita' di avvio manuale sono: `run` (normale, in loop), `once` (un solo controllo),
+  `dump` (stampa i valori grezzi, non tocca lo stato), `test` (invia una notifica di prova).
 - Progetto non affiliato a Zucchetti Centro Sistemi S.p.A.
