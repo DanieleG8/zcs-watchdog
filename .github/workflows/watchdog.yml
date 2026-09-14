@@ -68,7 +68,7 @@ jobs:
           ZERO_W_THRESHOLD:  ${{ vars.ZERO_W_THRESHOLD }}
           ZERO_PERSIST_MIN:  ${{ vars.ZERO_PERSIST_MIN }}
           STALE_LIMIT_MIN:   ${{ vars.STALE_LIMIT_MIN }}
-          ENERGY_STALL_MIN:  ${{ vars.ENERGY_STALL_MIN }}
+          ENERGY_WINDOW_MIN: ${{ vars.ENERGY_WINDOW_MIN }}
           RENOTIFY_HOURS:    ${{ vars.RENOTIFY_HOURS }}
           LASTUPDATE_IS_UTC: ${{ vars.LASTUPDATE_IS_UTC }}
           TZ: Europe/Rome

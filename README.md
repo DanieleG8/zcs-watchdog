@@ -16,24 +16,35 @@ Condividono i secret `MAIL_*` e i canali di notifica; per il resto sono separati
 ## Cosa rileva (fotovoltaico)
 
 - **STALE** — l'inverter non trasmette piu' dati (`lastUpdate` piu' vecchio della soglia). Controllo 24h/24.
-- **ZERO** — di giorno la potenza resta sotto soglia **e** il contatore di energia non sale.
-- **NOENERGY** — di giorno la potenza dice che si produce **ma** il contatore di energia e' fermo:
-  produzione apparente, non reale.
+- **ZERO** — di giorno l'energia **realmente entrata** nella finestra equivale a meno di
+  `ZERO_W_THRESHOLD` watt medi.
 - **UNREACH** — l'API non risponde: warning di monitoraggio, distinto dall'allarme impianto.
 
-### Perche' due segnali e non solo la potenza
+### Come si giudica la produzione (e perche' non basta la potenza)
 
 Il 14/09/2026 il portale ZCS mostrava 613 W mentre l'API dava 0 W, e il contatore
-`energyGeneratingTotal` non si muoveva di un decimo di kWh da oltre un'ora (il portale
-stesso segnava "Energia Generata Giornalmente: 0 kWh"). Fidarsi di un solo campo espone
-a due errori opposti: allarmi falsi se si rompe il campo della potenza, e allarmi mancati
-se quel campo racconta una produzione che non entra in nessun contatore.
+`energyGeneratingTotal` non si muoveva di un decimo di kWh da oltre un'ora — il portale
+stesso, nella stessa pagina, segnava "Energia Generata Giornalmente: 0 kWh".
 
-Quindi: il contatore cumulativo e' la prova dei fatti. Se non sale per
-`ENERGY_STALL_MIN` minuti in pieno giorno, l'impianto non sta producendo, qualunque cosa
-dica la potenza. Se sale, non scatta nessun allarme neanche con la potenza a zero (viene
-solo annotato nel log che quel campo e' inaffidabile). Di notte il cronometro resta
-azzerato, cosi' la fermata delle ore buie non fa scattare nulla all'alba.
+Il watchdog quindi **non crede alla potenza dichiarata**: misura quanta energia entra
+davvero nel contatore cumulativo in `ENERGY_WINDOW_MIN` minuti e la traduce in watt medi,
+da confrontare con `ZERO_W_THRESHOLD`. La potenza istantanea resta solo un'informazione
+nel messaggio.
+
+- Se nella finestra entra abbastanza energia, la finestra si chiude in anticipo e
+  riparte: un impianto che produce bene viene promosso subito, senza aspettare.
+- Se la finestra si esaurisce sotto soglia, e' un guasto — anche se la potenza dichiara
+  il contrario (allora il messaggio lo dice: "il portale segna X W ma quell'energia non
+  entra da nessuna parte").
+- Se il campo della potenza e' rotto ma l'energia entra, nessun allarme.
+- Di notte la finestra resta ancorata al presente, cosi' la pausa delle ore buie non fa
+  scattare nulla all'alba.
+- Se l'API smettesse di mandare il contatore, si torna al vecchio criterio della sola
+  potenza (con l'attesa di `ZERO_PERSIST_MIN`) invece di perdere l'allarme.
+
+Attenzione alla taglia: la soglia e' l'unico parametro che dice "quanto poco e' troppo
+poco". Su un impianto che fa ~450 kWh al giorno, 50 W non distinguono un guasto da un
+impianto sano: va portata a qualche migliaio di watt.
 
 Anti-spam: una notifica all'ingresso in allarme, una al rientro, promemoria ogni `RENOTIFY_HOURS`.
 Lo stato vive in `state.json`, ricommittato dal workflow solo quando cambia (piu' un
@@ -71,9 +82,9 @@ solo quando lo script decide di notificare. Telegram/webhook sono canali aggiunt
 | `PLANT_LAT`         | 44.0637 | latitudine impianto (per alba/tramonto)|
 | `PLANT_LON`         | 12.4460 | longitudine impianto                   |
 | `ZERO_W_THRESHOLD`  | 50      | W sotto cui = "zero produzione" (alzalo in proporzione all'impianto: su 90 kWp, 50 W non distinguono un guasto da un impianto sano) |
-| `ZERO_PERSIST_MIN`  | 90      | min di zero diurno prima dell'allarme  |
+| `ZERO_PERSIST_MIN`  | 90      | attesa del solo ripiego senza contatore |
 | `STALE_LIMIT_MIN`   | 45      | min senza dati = inverter offline      |
-| `ENERGY_STALL_MIN`  | 60      | min di contatore energia fermo = impianto fermo |
+| `ENERGY_WINDOW_MIN` | 60      | minuti su cui si misura l'energia entrata |
 | `RENOTIFY_HOURS`    | 6       | promemoria mentre resta in allarme     |
 | `LASTUPDATE_IS_UTC` | false   | metti `true` se l'API restituisce UTC  |
 | `LOOP_MINUTES`      | 55      | durata del loop interno (vedi sotto)   |

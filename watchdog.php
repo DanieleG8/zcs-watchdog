@@ -4,18 +4,21 @@
  * -----------------------------------------------------------------------
  * Interroga l'API realtime dell'inverter ZCS e avvisa se:
  *   1) STALE    -> l'inverter non trasmette piu' dati (timestamp vecchio)  [24h]
- *   2) ZERO     -> di giorno la potenza resta a zero E il contatore di
- *                  energia non sale                                        [solo alba-tramonto]
- *   3) NOENERGY -> la potenza dice che produce ma il contatore di energia
- *                  e' fermo: produzione apparente, non reale               [solo alba-tramonto]
- *   4) UNREACH  -> l'API non risponde (rete / endpoint / auth)             [warning monitoraggio]
+ *   2) ZERO     -> di giorno l'energia realmente accumulata nella finestra
+ *                  equivale a meno di ZERO_W_THRESHOLD watt medi            [solo alba-tramonto]
+ *   3) UNREACH  -> l'API non risponde (rete / endpoint / auth)             [warning monitoraggio]
  *
- * Perche' due segnali invece della sola potenza: il 14/09/2026 il portale ZCS
- * mostrava 613 W mentre l'API dava 0 W, e il contatore energyGeneratingTotal
- * non si muoveva di un decimo di kWh da oltre un'ora. Il contatore cumulativo
- * e' la prova dei fatti: se non sale, non si sta producendo, qualunque cosa
- * dica il campo della potenza; se sale, non c'e' allarme neanche se quel
- * campo e' rotto.
+ * Il giudizio sulla produzione NON si basa sulla potenza istantanea ma
+ * sull'energia contata davvero: il 14/09/2026 il portale ZCS mostrava 613 W
+ * mentre l'API dava 0 W, e energyGeneratingTotal non si muoveva di un decimo
+ * di kWh da oltre un'ora (il portale stesso segnava 0 kWh giornalieri).
+ *
+ * Si misura quindi quanta energia entra in ENERGY_WINDOW_MIN minuti e la si
+ * traduce in watt medi, confrontandoli con la stessa soglia: la potenza
+ * istantanea resta solo un'informazione nel messaggio. Cosi' un campo potenza
+ * rotto non genera falsi allarmi (se l'energia entra, l'impianto produce) e
+ * una produzione simbolica non li nasconde (100 W su un impianto da 90 kWp
+ * sono un guasto, anche se il contatore si muove).
  *
  * Pensato per girare su GitHub Actions via cron. La configurazione arriva
  * dalle variabili d'ambiente (impostate come Secrets/Variables del repo).
@@ -49,7 +52,7 @@ $LON = (float) env('PLANT_LON', '12.4460');
 $ZERO_W_THRESHOLD    = (int) env('ZERO_W_THRESHOLD', '50');
 $ZERO_PERSIST_MIN    = (int) env('ZERO_PERSIST_MIN', '90');
 $STALE_LIMIT_MIN     = (int) env('STALE_LIMIT_MIN', '45');
-$ENERGY_STALL_MIN    = (int) env('ENERGY_STALL_MIN', '60');
+$ENERGY_WINDOW_MIN   = (int) env('ENERGY_WINDOW_MIN', '60');
 $UNREACH_PERSIST_MIN = (int) env('UNREACH_PERSIST_MIN', '30');
 $DAY_MARGIN_MIN      = (int) env('DAY_MARGIN_MIN', '40');
 $RENOTIFY_HOURS      = (int) env('RENOTIFY_HOURS', '6');
@@ -94,7 +97,7 @@ $state = loadState();
 $now   = time();
 
 /* 1. Condizione attuale */
-$energy = ['etot' => $state['etot'] ?? null, 'etot_ts' => $now];
+$energy = ['etot_ref' => $state['etot_ref'] ?? null, 'ref_ts' => $now, 'prod_bad' => false];
 
 if (!$ok) {
     $condition = 'unreachable';
@@ -108,7 +111,7 @@ if (!$ok) {
         list($condition, $detail, $energy) = evaluateProduction($node, $now, $state, [
             'zero_w_threshold'  => $ZERO_W_THRESHOLD,
             'stale_limit_min'   => $STALE_LIMIT_MIN,
-            'energy_stall_min'  => $ENERGY_STALL_MIN,
+            'energy_window_min' => $ENERGY_WINDOW_MIN,
             'lastupdate_is_utc' => $LASTUPDATE_IS_UTC,
             'lat'               => $LAT,
             'lon'               => $LON,
@@ -119,8 +122,8 @@ if (!$ok) {
 
 /* 2. Stato + anti-spam */
 $persistMin = [
-    'zero'        => $ZERO_PERSIST_MIN,
-    'noenergy'    => 0,   // l'attesa e' gia' nei minuti di contatore fermo
+    'zero'        => 0,   // l'attesa e' gia' dentro la finestra di misura
+    'zeropower'   => $ZERO_PERSIST_MIN,   // ripiego senza contatore: si aspetta come prima
     'stale'       => $STALE_LIMIT_MIN,
     'unreachable' => $UNREACH_PERSIST_MIN,
     'ok'          => 0,
@@ -163,7 +166,7 @@ $shouldNotify = ($lastNotified === 0) || (($now - $lastNotified) >= $RENOTIFY_HO
 if ($shouldNotify) {
     $titles = [
         'zero'        => 'NESSUNA PRODUZIONE',
-        'noenergy'    => 'PRODUZIONE FERMA (contatore energia bloccato)',
+        'zeropower'   => 'NESSUNA PRODUZIONE (contatore non disponibile)',
         'stale'       => 'INVERTER OFFLINE (nessun dato)',
         'unreachable' => 'MONITORAGGIO CIECO (API non raggiungibile)',
     ];
@@ -200,65 +203,69 @@ function evaluateProduction(array $node, int $now, array $state, array $cfg): ar
     $lastTs = parseLastUpdate($node['lastUpdate'] ?? null, $cfg['lastupdate_is_utc']);
     $ageMin = $lastTs ? ($now - $lastTs) / 60 : PHP_INT_MAX;
     $quando = $lastTs ? date('H:i', $lastTs) : 'n/d';
-
-    $isDay  = isDaytime($now, $cfg['lat'], $cfg['lon'], $cfg['day_margin_min']);
-    $etot   = isset($node['energyGeneratingTotal']) ? (float) $node['energyGeneratingTotal'] : null;
-    $prev   = isset($state['etot']) ? (float) $state['etot'] : null;
-    $ts     = (int) ($state['etot_ts'] ?? 0);
-
-    // "Mosso" solo se abbiamo un confronto vero: al primo giro non sappiamo
-    // ancora nulla e non possiamo spacciarlo per una conferma di produzione.
-    $mosso = $etot !== null && $prev !== null && abs($etot - $prev) > 0.0001;
-
-    // Il cronometro riparte se: primo giro, contatore assente, valore cambiato
-    // (anche in calo: inverter sostituito o azzerato), oppure e' notte.
-    if ($etot === null || $prev === null || $ts === 0 || $mosso || !$isDay) {
-        $ts = $now;
-    }
-    $energy    = ['etot' => $etot, 'etot_ts' => $ts];
-    $fermoMin  = ($now - $ts) / 60;
-    $noEnergia = $etot !== null && $fermoMin >= $cfg['energy_stall_min'];
-    $sottoSoglia = $powerW <= $cfg['zero_w_threshold'];
+    $soglia = (float) $cfg['zero_w_threshold'];
+    $finestra = (int) $cfg['energy_window_min'];
 
     if ($ageMin > $cfg['stale_limit_min']) {
         return ['stale', sprintf('Ultimo dato %s (%.0f min fa).',
-            $lastTs ? date('Y-m-d H:i:s', $lastTs) : 'n/d', $ageMin), $energy];
+            $lastTs ? date('Y-m-d H:i:s', $lastTs) : 'n/d', $ageMin),
+            ['etot_ref' => $state['etot_ref'] ?? null, 'ref_ts' => $now, 'prod_bad' => false]];
     }
 
-    // Se l'API smettesse di mandare il contatore, non si puo' incrociare nulla:
-    // si torna al criterio della sola potenza invece di perdere l'allarme.
-    if ($isDay && $etot === null && $sottoSoglia) {
-        return ['zero', sprintf('Potenza %.0f W di giorno (soglia %d W), contatore di energia '
-            . 'non disponibile. Ultimo dato %s.', $powerW, $cfg['zero_w_threshold'], $quando), $energy];
+    $isDay = isDaytime($now, $cfg['lat'], $cfg['lon'], $cfg['day_margin_min']);
+    $etot  = isset($node['energyGeneratingTotal']) ? (float) $node['energyGeneratingTotal'] : null;
+
+    // Senza contatore non si puo' misurare nulla: si torna al vecchio criterio
+    // della sola potenza istantanea, con la sua attesa (ZERO_PERSIST_MIN).
+    if ($etot === null) {
+        $vuoto = ['etot_ref' => null, 'ref_ts' => $now, 'prod_bad' => false];
+        if ($isDay && $powerW <= $soglia) {
+            return ['zeropower', sprintf('Potenza %.0f W di giorno (soglia %.0f W), contatore di '
+                . 'energia non disponibile. Ultimo dato %s.', $powerW, $soglia, $quando), $vuoto];
+        }
+        return ['ok', sprintf('Potenza %.0f W, contatore non disponibile. Ultimo dato %s.',
+            $powerW, $quando), $vuoto];
     }
 
-    if ($isDay && $noEnergia) {
-        $comune = sprintf('Energia totale ferma a %.1f kWh da %.0f min. Ultimo dato %s.',
-            $etot, $fermoMin, $quando);
-        return $sottoSoglia
-            ? ['zero', sprintf('Potenza %.0f W di giorno (soglia %d W). %s',
-                  $powerW, $cfg['zero_w_threshold'], $comune), $energy]
-            : ['noenergy', sprintf('Il portale segna %.0f W ma non entra energia. %s',
-                  $powerW, $comune), $energy];
+    // Di notte la finestra resta ferma al presente: la pausa delle ore buie non
+    // deve trasformarsi in un allarme alla prima luce.
+    $ref   = isset($state['etot_ref']) ? (float) $state['etot_ref'] : null;
+    $refTs = (int) ($state['ref_ts'] ?? 0);
+    if (!$isDay || $ref === null || $refTs === 0 || $etot < $ref) {
+        // $etot < $ref = contatore azzerato o inverter sostituito: si riparte.
+        return ['ok', sprintf('Potenza %.0f W. Totale %.1f kWh. Ultimo dato %s.', $powerW, $etot, $quando),
+            ['etot_ref' => $etot, 'ref_ts' => $now, 'prod_bad' => false]];
     }
 
-    // Potenza a zero mentre l'energia sale: e' il campo della potenza a mentire,
-    // non l'impianto. Nessun allarme, ma va detto nel log.
-    if ($isDay && $sottoSoglia && $mosso) {
-        return ['ok', sprintf('Potenza %.0f W (sotto soglia) ma il contatore di energia sale: '
-            . 'campo potenza inaffidabile, impianto in produzione. Totale %.1f kWh. Ultimo dato %s.',
-            $powerW, $etot, $quando), $energy];
+    $minuti   = ($now - $refTs) / 60;
+    $entrata  = $etot - $ref;                          // kWh accumulati nella finestra
+    $servono  = $soglia * $minuti / 60 / 1000;         // kWh minimi per stare sopra soglia
+    $mediaW   = $minuti > 0 ? $entrata * 1000 * 60 / $minuti : 0.0;
+    $prodBad  = (bool) ($state['prod_bad'] ?? false);
+
+    if ($entrata >= $servono && $entrata > 0) {
+        // Bastano i kWh gia' entrati per superare la soglia: promosso subito,
+        // senza aspettare la fine della finestra. La finestra riparte da qui.
+        return ['ok', sprintf('Media %.0f W negli ultimi %.0f min (soglia %.0f W). '
+            . 'Potenza istantanea %.0f W. Ultimo dato %s.', $mediaW, $minuti, $soglia, $powerW, $quando),
+            ['etot_ref' => $etot, 'ref_ts' => $now, 'prod_bad' => false]];
     }
 
-    // Potenza a zero e contatore non ancora maturo: si aspetta, non si grida.
-    if ($isDay && $sottoSoglia) {
-        return ['ok', sprintf('Potenza %.0f W di giorno: attendo conferma dal contatore '
-            . '(fermo da %.0f min su %d). Totale %.1f kWh. Ultimo dato %s.',
-            $powerW, $fermoMin, $cfg['energy_stall_min'], $etot ?? 0, $quando), $energy];
+    if ($minuti >= $finestra) {
+        // Finestra intera sotto soglia: e' un guasto, comunque lo racconti la potenza.
+        $extra = $powerW > $soglia
+            ? sprintf(' Il portale segna %.0f W ma quell\'energia non entra da nessuna parte.', $powerW)
+            : sprintf(' Potenza istantanea %.0f W.', $powerW);
+        return ['zero', sprintf('Solo %.2f kWh in %.0f min: %.0f W medi contro una soglia di %.0f W.%s '
+            . 'Totale %.1f kWh. Ultimo dato %s.', $entrata, $minuti, $mediaW, $soglia, $extra, $etot, $quando),
+            ['etot_ref' => $etot, 'ref_ts' => $now, 'prod_bad' => true]];
     }
 
-    return ['ok', sprintf('Potenza %.0f W. Totale %s kWh. Ultimo dato %s.',
-        $powerW, $etot === null ? 'n/d' : sprintf('%.1f', $etot), $quando), $energy];
+    // Finestra ancora aperta: si conserva il verdetto precedente.
+    $stato = ['etot_ref' => $ref, 'ref_ts' => $refTs, 'prod_bad' => $prodBad];
+    $testo = sprintf('%.2f kWh in %.0f min (finestra %d min, soglia %.0f W). Potenza istantanea %.0f W. Ultimo dato %s.',
+        $entrata, $minuti, $finestra, $soglia, $powerW, $quando);
+    return [$prodBad ? 'zero' : 'ok', $testo, $stato];
 }
 
 function env(string $k, string $default = ''): string {
