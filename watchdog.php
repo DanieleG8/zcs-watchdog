@@ -63,6 +63,9 @@ $TG_BOT_TOKEN = env('TG_BOT_TOKEN', '');
 $TG_CHAT_ID   = env('TG_CHAT_ID', '');
 $WEBHOOK_URL  = env('WEBHOOK_URL', ''); // opzionale: riceve un POST JSON {tag,text}
 
+// Guida alle mail per chi le riceve (vedi RIFERIMENTO.md).
+const GUIDE_URL = 'https://claude.ai/code/artifact/19aa137e-428a-4742-89c8-e0df7f06aaa9';
+
 const STATE_FILE = __DIR__ . '/state.json';
 
 /* ----------------------------- Runtime -------------------------------- */
@@ -352,8 +355,27 @@ function logline(string $msg): void {
     echo date('Y-m-d H:i:s') . "  $msg\n"; // finisce nel log del job Actions
 }
 
+
+/**
+ * Ogni notifica porta con se' il link alla guida in parole povere: chi riceve
+ * la mail spesso non e' chi ha configurato il sistema, e un oggetto come
+ * "MONITORAGGIO CIECO" da solo non dice a nessuno cosa fare.
+ * Si puo' sovrascrivere con la variable GUIDE_URL, o svuotare per toglierlo.
+ */
+function conGuida(string $body): string
+{
+    // Una Variable non impostata arriva qui come stringa vuota, quindi il vuoto
+    // vuol dire "usa il predefinito", non "togli il link": per toglierlo davvero
+    // serve dirlo, con GUIDE_URL = off.
+    $url = env('GUIDE_URL', GUIDE_URL);
+    if (in_array(strtolower($url), ['', 'off', 'no', 'none'], true)) return $body;
+    return $body . "\n\n--\nCosa significa questa mail e cosa fare: " . $url;
+}
+
 function notify(string $tag, string $body): void {
     global $TG_BOT_TOKEN, $TG_CHAT_ID, $WEBHOOK_URL;
+
+    $body = conGuida($body);
 
     // GitHub Actions: espone la notifica allo step "Send email" del workflow.
     // Lo script decide QUANDO notificare; l'invio SMTP lo fa il workflow.

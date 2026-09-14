@@ -160,6 +160,7 @@ Variables utili (tab **Variables**, tutte opzionali):
 | `TESLA_SOC_MIN_PERCENT`     | 0       | soglia carica minima (0 = controllo spento)|
 | `TESLA_OFFGRID_GRID_W`      | 200     | watt di scambio oltre i quali un 'off_grid' dichiarato non e' credibile |
 | `TESLA_LOOP_INTERVAL_SEC`   | 600     | secondi tra un controllo e il successivo   |
+| `GUIDE_URL`                 | —       | link alla guida in fondo alle mail (`off` per toglierlo) |
 
 ## Passo 5 — Registrazione una tantum del partner account
 

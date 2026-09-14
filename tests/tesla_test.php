@@ -139,7 +139,36 @@ unlink($tmp);
 putenv('GITHUB_OUTPUT');
 check('notify=1 presente', true, str_contains($out, "notify=1\n"));
 check('subject con prefisso', true, str_contains($out, 'subject=[Powerwall] POWERWALL IN ISOLA (rete assente)'));
-check('body multiriga con delimitatore', true, str_contains($out, "body<<__TESLAEOF__\nriga uno\nriga due\n__TESLAEOF__"));
+check('body multiriga con delimitatore', true, str_contains($out, "body<<__TESLAEOF__\nriga uno\nriga due\n"));
+check('  il testo passato non viene alterato', true, str_contains($out, "riga uno\nriga due"));
+// Chi riceve la mail non e' chi ha configurato il sistema: il link alla guida
+// deve esserci sempre, non solo negli allarmi importanti.
+check('  in fondo c\'e' . " il link alla guida", true, str_contains($out, GUIDE_URL));
+check('  il delimitatore chiude comunque il blocco', true, str_contains($out, "\n__TESLAEOF__\n"));
+
+// Svuotare GUIDE_URL toglie il link, senza rompere la notifica.
+$tmp2 = tempnam(sys_get_temp_dir(), 'ghout');
+putenv("GITHUB_OUTPUT=$tmp2");
+putenv('GUIDE_URL=off');
+notify('TEST', 'corpo asciutto');
+$out2 = (string) file_get_contents($tmp2);
+unlink($tmp2);
+putenv('GITHUB_OUTPUT');
+putenv('GUIDE_URL');
+check('GUIDE_URL=off toglie il link', false, str_contains($out2, GUIDE_URL));
+check('  ma la notifica parte lo stesso', true, str_contains($out2, 'corpo asciutto'));
+
+// Una Variable non impostata arriva come stringa vuota: deve valere il default,
+// altrimenti il link sparirebbe da solo su un repo appena configurato.
+$tmp3 = tempnam(sys_get_temp_dir(), 'ghout');
+putenv("GITHUB_OUTPUT=$tmp3");
+putenv('GUIDE_URL=');
+notify('TEST', 'corpo');
+$out3 = (string) file_get_contents($tmp3);
+unlink($tmp3);
+putenv('GITHUB_OUTPUT');
+putenv('GUIDE_URL');
+check('GUIDE_URL vuota -> vale il predefinito', true, str_contains($out3, GUIDE_URL));
 
 echo "\ncache dell'access token\n";
 $cache = tempnam(sys_get_temp_dir(), 'tokc');

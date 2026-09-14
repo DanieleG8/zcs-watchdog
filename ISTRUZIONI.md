@@ -133,6 +133,7 @@ Stessa pagina, **tab "Variables"**. Se non le imposti, valgono i default dello s
 | `LASTUPDATE_IS_UTC` | false   | metti `true` se l'API dà orari in UTC |
 | `LOOP_MINUTES`      | 55      | quanto resta vivo il job a ricontrollare |
 | `LOOP_INTERVAL_SEC` | 300     | secondi tra un controllo e il successivo |
+| `GUIDE_URL`         | —       | link alla guida in fondo alle mail (`off` per toglierlo) |
 
 👉 Metti `PLANT_LAT`/`PLANT_LON` con le coordinate reali del tuo impianto.
 
