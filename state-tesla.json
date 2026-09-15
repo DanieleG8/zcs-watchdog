@@ -1,9 +1,9 @@
 {
     "status": "ok",
-    "since": 1789452951,
+    "since": 1789467687,
     "last_notified": 0,
-    "last_ok": 1789452951,
+    "last_ok": 1789467687,
     "hb": "2026-09-15",
-    "riepilogo": "Carica 12%, batteria 0 W, casa 15924 W, rete 15924 W, solare 0 W. (island_status dice off_grid_unintentional, ma dalla rete passano 15924: non e' isola)",
-    "riepilogo_ts": 1789452951
+    "riepilogo": "Carica 11%, batteria 0 W, casa 14157 W, rete 14157 W, solare 0 W. (island_status dice off_grid_unintentional, ma dalla rete passano 14157: non e' isola)",
+    "riepilogo_ts": 1789467687
 }
