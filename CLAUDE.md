@@ -65,10 +65,14 @@ introdotte.
 - **La produzione si giudica sul contatore di energia, non sulla potenza
   dichiarata.** Il portale ZCS ha mostrato 613 W mentre il contatore dei kWh era
   immobile. Un campo di potenza puo' mentire; l'energia entrata no.
-- **L'isola dichiarata dal Powerwall va confermata dal contatore rete.** Questo
-  impianto dichiara stabilmente `off_grid_unintentional` mentre preleva
-  chilowatt dalla rete. Fidarsi dell'etichetta significava una mail di blackout
-  ogni quattro ore.
+- **Le misure di flusso del Powerwall non valgono come prova, `island_status`
+  si.** Il 14/09 avevo messo qui la regola opposta: "l'isola dichiarata va
+  confermata dal contatore rete". Era sbagliata, ed e' costata un giorno di
+  silenzio su un allarme vero. `grid_power` ripete `load_power` al decimale in
+  ogni campione (residuo calcolato, non misura) e `battery_power` dice 0 mentre
+  la carica cala: un campo che non misura niente non puo' smentire niente.
+  Quando i flussi si contraddicono il messaggio lo dichiara; la condizione la
+  decide `island_status`. **Su dati incoerenti un watchdog parla, non tace.**
 
 ## Il repository e' pubblico
 

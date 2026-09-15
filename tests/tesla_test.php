@@ -25,7 +25,7 @@ function check(string $titolo, $atteso, $ottenuto): void
 }
 
 $now = 1789369200; // 2026-09-14 09:00 Europe/Rome
-$cfg = ['stale_limit_min' => 60, 'soc_min_percent' => 0, 'offgrid_grid_w' => 200];
+$cfg = ['stale_limit_min' => 60, 'soc_min_percent' => 0];
 
 function live(array $over = [], int $now = 1789369200): array
 {
@@ -72,7 +72,7 @@ check('senza island_status si usa grid_status', 'offgrid', $c);
 list($c, ) = evaluateCondition(live(['island_status' => '', 'grid_status' => 'Active']), $now, $cfg);
 check('grid_status Active senza island_status -> ok', 'ok', $c);
 
-list($c, ) = evaluateCondition(live(['percentage_charged' => 3.0]), $now, ['stale_limit_min' => 60, 'soc_min_percent' => 5, 'offgrid_grid_w' => 200]);
+list($c, ) = evaluateCondition(live(['percentage_charged' => 3.0]), $now, ['stale_limit_min' => 60, 'soc_min_percent' => 5]);
 check('carica 3% sotto soglia 5% -> soc', 'soc', $c);
 
 list($c, ) = evaluateCondition(live(['percentage_charged' => 3.0]), $now, $cfg);
@@ -81,48 +81,56 @@ check('controllo carica disattivato (soglia 0) -> ok', 'ok', $c);
 list($c, ) = evaluateCondition(
     live(['percentage_charged' => 3.0, 'island_status' => 'off_grid']),
     $now,
-    ['stale_limit_min' => 60, 'soc_min_percent' => 5, 'offgrid_grid_w' => 200]
+    ['stale_limit_min' => 60, 'soc_min_percent' => 5]
 );
 check('isola ha la precedenza sulla carica bassa', 'offgrid', $c);
 
-// Il caso vero dell'impianto Panta: island_status dice 'off_grid_unintentional'
-// mentre dal contatore rete passano 6.6 kW. Un sistema in isola non scambia
-// con la rete: l'etichetta e' sbagliata e va smentita dalla misura.
+// IL CASO PANTA, CORRETTO IL 15/09. Per un giorno questo blocco ha preteso che
+// un off_grid dichiarato fosse confermato da grid_power, e quando grid_power
+// diceva "migliaia di watt dalla rete" l'allarme veniva zittito. Era sbagliato:
+// su questo impianto grid_power RIPETE load_power al decimale in ogni campione
+// (e' un residuo calcolato, non una misura), e battery_power dichiara 0 mentre
+// la carica scende dal 16.3% al 10.6% in ventidue ore. Un campo che non misura
+// niente non puo' smentire niente - e intanto l'app Tesla diceva "alimentazione
+// dalla rete interrotta". Un watchdog che tace su dati contraddittori e' il
+// guasto peggiore che questo repo possa avere.
 list($c, $d) = evaluateCondition(
     live(['island_status' => 'off_grid_unintentional', 'grid_status' => 'Inactive',
-          'grid_power' => 6643.8, 'load_power' => 6643.8, 'solar_power' => 0, 'battery_power' => 0]),
+          'grid_power' => 23725.98, 'load_power' => 23725.98, 'solar_power' => 0,
+          'battery_power' => 0, 'percentage_charged' => 10.6]),
     $now, $cfg
 );
-check('IL CASO PANTA: off_grid dichiarato ma 6.6 kW dalla rete -> ok', 'ok', $c);
-check('  e il messaggio spiega perche non e allarme', true, str_contains($d, "non e' isola"));
+check('IL CASO PANTA: off_grid con misure incoerenti -> ALLARME, non silenzio', 'offgrid', $c);
+check('  smaschera la rete che ripete la casa', true,
+    str_contains($d, 'il valore della rete ripete esattamente quello della casa'));
+check('  e i watt che non arrivano da nessuna parte', true,
+    str_contains($d, 'non li fornisce nessuno'));
+check('  dicendo di non fidarsi di quei numeri', true,
+    str_contains($d, 'non usarle per dedurre lo stato della rete'));
 
-// Stessa etichetta, ma stavolta la rete e' davvero ferma: allarme vero.
+// Un impianto con misure sensate non deve portarsi dietro l'avvertenza.
+list($c, $d) = evaluateCondition(
+    live(['island_status' => 'off_grid_unintentional', 'grid_power' => 0,
+          'load_power' => 3000, 'battery_power' => 3000, 'solar_power' => 0]),
+    $now, $cfg
+);
+check('off_grid coerente (la batteria alimenta la casa) -> offgrid', 'offgrid', $c);
+check('  senza avvertenze sui flussi', false, str_contains($d, 'non sono coerenti'));
+
+// La rete che eroga davvero: valori diversi fra loro, nessuna contraddizione.
+list($c, $d) = evaluateCondition(
+    live(['island_status' => 'on_grid', 'grid_power' => 2000,
+          'load_power' => 3000, 'battery_power' => 1000, 'solar_power' => 0]),
+    $now, $cfg
+);
+check('impianto normale collegato alla rete -> ok', 'ok', $c);
+
+// STALE continua ad avere la precedenza su tutto.
 list($c, ) = evaluateCondition(
-    live(['island_status' => 'off_grid_unintentional', 'grid_power' => 0, 'battery_power' => 4000]),
+    live(['island_status' => 'off_grid', 'timestamp' => date('c', $now - 3 * 3600)]),
     $now, $cfg
 );
-check('off_grid con rete a 0 W -> offgrid (blackout vero)', 'offgrid', $c);
-
-// Sotto la tolleranza restano i consumi di servizio del gateway.
-list($c, ) = evaluateCondition(live(['island_status' => 'off_grid', 'grid_power' => -150]), $now, $cfg);
-check('off_grid con 150 W residui (sotto tolleranza) -> offgrid', 'offgrid', $c);
-
-// L'immissione conta quanto il prelievo: e' comunque rete collegata.
-list($c, ) = evaluateCondition(live(['island_status' => 'off_grid', 'grid_power' => -3000]), $now, $cfg);
-check('off_grid ma 3 kW immessi in rete -> ok', 'ok', $c);
-
-// Senza la misura non c'e' niente da confrontare: si crede all'etichetta.
-$senzaMisura = live(['island_status' => 'off_grid']);
-unset($senzaMisura['grid_power']);
-list($c, ) = evaluateCondition($senzaMisura, $now, $cfg);
-check('off_grid senza grid_power -> offgrid (nessuna smentita possibile)', 'offgrid', $c);
-
-// La smentita non deve coprire una telemetria vecchia.
-list($c, ) = evaluateCondition(
-    live(['island_status' => 'off_grid', 'grid_power' => 6000, 'timestamp' => date('c', $now - 3 * 3600)]),
-    $now, $cfg
-);
-check('off_grid smentito ma dato di 3 ore fa -> stale (prevale)', 'stale', $c);
+check('off_grid ma dato di 3 ore fa -> stale (prevale)', 'stale', $c);
 
 echo "\nparseTimestamp\n";
 check('ISO 8601 con offset', 1789371480, parseTimestamp('2026-09-14T09:38:00+02:00'));

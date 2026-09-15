@@ -75,7 +75,7 @@ il dettaglio con i numeri del momento e chiude con da quanto dura l'anomalia.
 | Oggetto | Cosa e' successo | Dopo quanto parte |
 |---------|------------------|-------------------|
 | **POWERWALL SENZA TELEMETRIA** | il Gateway non manda dati da oltre 60 min: sistema staccato, gateway guasto, o rete di casa giu' | subito (il timeout e' gia' la soglia) |
-| **POWERWALL IN ISOLA (rete assente)** | `island_status` fuori da `on_grid` **e** il contatore rete conferma che non passa corrente: blackout vero | 15 min |
+| **POWERWALL IN ISOLA (rete assente)** | `island_status` fuori da `on_grid`: il sistema dichiara di non avere la rete. Se le misure di flusso si contraddicono, il messaggio lo segnala invece di zittire l'allarme | 15 min |
 | **POWERWALL QUASI SCARICO** | carica sotto la soglia minima. **Oggi spento** (`TESLA_SOC_MIN_PERCENT` = 0) | subito |
 | **TOKEN TESLA NON VALIDO (monitoraggio fermo)** | la catena dei refresh token si e' rotta: il monitoraggio della batteria e' fermo, va rifatta l'autorizzazione | subito |
 | **TOKEN TESLA DA RINNOVARE** | Tesla ha ruotato il token ma non e' stato possibile risalvarlo nel secret (PAT scaduto o senza permesso *Secrets: write*). **Hai poche ore** prima che il monitoraggio si fermi | subito |
@@ -136,21 +136,28 @@ rotazione automatica del refresh token.
 | `timestamp` | ora del campione | decide lo STALE |
 | `island_status` | `on_grid` / `off_grid_intentional` / `off_grid_unintentional` | candidato all'allarme isola |
 | `grid_status` | `Active` / `Inactive` / `Islanded` | ripiego se `island_status` manca |
-| `grid_power` | scambio con la rete, in W (positivo = prelievo) | **conferma o smentisce l'isola**, e compare nel riepilogo |
+| `grid_power` | dovrebbe essere lo scambio con la rete, in W | **su questo impianto ripete `load_power`**: non decide niente, compare nel riepilogo |
 | `percentage_charged` | carica della batteria, in % | soglia SOC |
 | `battery_power` | potenza della batteria (negativo = in carica) | riepilogo |
 | `load_power` | consumo di casa | riepilogo |
 | `solar_power` | produzione vista dal Powerwall | riepilogo |
 | `storm_mode_active` | modalita' tempesta | nota nel messaggio |
 
-**Perche' l'isola va confermata.** Questo impianto dichiara stabilmente
-`off_grid_unintentional` mentre dal contatore passano migliaia di watt. Un
-sistema in isola non scambia con la rete, per definizione: se `grid_power`
-supera in valore assoluto `TESLA_OFFGRID_GRID_W` (200 W, quanto basta a
-lasciar fuori i consumi di servizio del gateway), l'etichetta e' sbagliata e
-l'allarme non parte. Se `grid_power` manca del tutto non c'e' niente da
-confrontare e si crede all'etichetta: meglio un falso allarme che un blackout
-silenzioso.
+**I flussi di potenza di questo impianto non sono attendibili** (accertato il
+15/09/2026, correggendo una regola sbagliata del giorno prima). In sei campioni
+su sei `grid_power` ripete `load_power` **al decimale**: non e' una misura
+indipendente, e' un residuo calcolato. E `battery_power` dichiara 0 mentre la
+carica scende dal 16,3% al 10,6% in ventidue ore, il che e' impossibile: una
+batteria che si scarica eroga. Con batteria e solare a zero, i chilowatt
+attribuiti alla casa non li fornisce nessuno.
+
+Per un giorno l'allarme isola ha preteso conferma proprio da `grid_power`, e
+veniva zittito ogni volta. Era la peggior forma di errore possibile qui: il
+sistema taceva mentre l'app Tesla diceva "alimentazione dalla rete interrotta".
+
+Ora `island_status` decide da solo, e quando i flussi si contraddicono il
+messaggio **lo dichiara** (`ATTENZIONE, le misure di flusso non sono coerenti`)
+invece di dedurne qualcosa. Da un dato incoerente non si conclude: si avvisa.
 
 **Cosa la Fleet API non dice.** I codici di guasto interni del Powerwall (la
 lista `alerts` dei singoli battery block) li espone solo l'API locale del
@@ -183,7 +190,6 @@ Sono tutte Variables del repo: si cambiano senza toccare il codice.
 |----------|--------|-------------|
 | `TESLA_STALE_LIMIT_MIN` | 60 (default) | minuti senza telemetria |
 | `TESLA_OFFGRID_PERSIST_MIN` | 15 (default) | minuti in isola prima di avvisare |
-| `TESLA_OFFGRID_GRID_W` | 200 (default) | scambio oltre il quale l'isola non e' credibile |
 | `TESLA_UNREACH_PERSIST_MIN` | 30 (default) | minuti di Fleet API muta |
 | `TESLA_SOC_MIN_PERCENT` | 0 (default) | soglia carica — **0 = controllo spento** |
 | `TESLA_LOOP_INTERVAL_SEC` | 600 (default) | secondi fra un controllo e il successivo |

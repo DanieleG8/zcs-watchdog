@@ -84,7 +84,6 @@ jobs:
           TESLA_REGION:              ${{ vars.TESLA_REGION }}
           TESLA_STALE_LIMIT_MIN:     ${{ vars.TESLA_STALE_LIMIT_MIN }}
           TESLA_OFFGRID_PERSIST_MIN: ${{ vars.TESLA_OFFGRID_PERSIST_MIN }}
-          TESLA_OFFGRID_GRID_W:      ${{ vars.TESLA_OFFGRID_GRID_W }}
           TESLA_UNREACH_PERSIST_MIN: ${{ vars.TESLA_UNREACH_PERSIST_MIN }}
           TESLA_SOC_MIN_PERCENT:     ${{ vars.TESLA_SOC_MIN_PERCENT }}
           TZ: Europe/Rome
