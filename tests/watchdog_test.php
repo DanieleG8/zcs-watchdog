@@ -185,5 +185,44 @@ check('rientro da stale senza guasto noto -> resta prudente', true,
 $t = testoRientro('unreachable', false);
 check('rientro da API muta -> parla di monitoraggio', true, str_contains($t, 'monitoraggio ci vede'));
 
+echo "\nquadro di entrambi gli impianti in ogni notifica\n";
+
+check('meno di un minuto', 'adesso', etaLeggibile(20));
+check('minuti', '7 min fa', etaLeggibile(7 * 60));
+check('ore tonde', '3h fa', etaLeggibile(3 * 3600));
+check('ore e minuti', '2h12m fa', etaLeggibile(2 * 3600 + 12 * 60));
+check('tempo negativo (orologi sfasati) -> adesso', 'adesso', etaLeggibile(-500));
+
+$adesso = 1789449943;
+$vivo = ['status' => 'ok', 'riepilogo' => 'Carica 12%, casa 5020 W.', 'riepilogo_ts' => $adesso - 300];
+
+$b = bloccoImpianto('Batteria Tesla', $vivo, $adesso);
+check('il blocco riporta etichetta, stato e freschezza', true,
+    str_contains($b, 'Batteria Tesla [OK] - 5 min fa'));
+check('  e la misura vera e propria', true, str_contains($b, 'Carica 12%, casa 5020 W.'));
+check('  senza avvisi se il dato e fresco', false, str_contains($b, 'ATTENZIONE'));
+
+// Un watchdog fermo da ore non deve far credere che quella sia la situazione.
+$vecchio = ['status' => 'ok', 'riepilogo' => 'Tutto bene.', 'riepilogo_ts' => $adesso - 5 * 3600];
+$b = bloccoImpianto('Batteria Tesla', $vecchio, $adesso);
+check('misura di 5 ore fa -> avvisa che e vecchia', true, str_contains($b, 'ATTENZIONE: misura vecchia'));
+check('  e dice quanto', true, str_contains($b, '5h fa'));
+
+// L'altro watchdog non e' mai partito: si dichiara, non si inventa.
+check('stato assente -> lo dice', 'Fotovoltaico: nessuna misura disponibile.',
+    bloccoImpianto('Fotovoltaico', [], $adesso));
+check('stato senza riepilogo -> idem', 'Fotovoltaico: nessuna misura disponibile.',
+    bloccoImpianto('Fotovoltaico', ['status' => 'ok'], $adesso));
+
+$q = quadroImpianti(
+    ['status' => 'zero', 'riepilogo' => 'Solo 0.00 kWh in 65 min.', 'riepilogo_ts' => $adesso],
+    $vivo, $adesso
+);
+check('il quadro nomina tutti e due gli impianti', true,
+    str_contains($q, ETICHETTA_MIA) && str_contains($q, ETICHETTA_ALTRA));
+check('  con l intestazione', true, str_contains($q, 'Situazione rilevata'));
+
+check('leggiStato su file inesistente -> array vuoto', [], leggiStato('/tmp/non-esiste-davvero.json'));
+
 echo "\n" . ($fails === 0 ? "Tutte le prove sono passate.\n" : "$fails prove fallite.\n");
 exit($fails === 0 ? 0 : 1);

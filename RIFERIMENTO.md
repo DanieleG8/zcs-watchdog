@@ -1,15 +1,29 @@
 # Riferimento — mail che puoi ricevere e valori misurati
 
-Due watchdog indipendenti, due impianti, due stati separati. Non si parlano:
-se cade il fotovoltaico la batteria continua a essere sorvegliata, e viceversa.
+Due watchdog indipendenti su un unico giro di controllo. Girano nello stesso
+job (`.github/workflows/watchdog.yml`), uno dopo l'altro, ogni cinque minuti:
+un solo risveglio copre tutti e due gli impianti. Ma restano separati dove
+conta: stato proprio, soglie proprie, mail proprie. Se uno dei due script
+fallisce, l'altro viene eseguito lo stesso e continua a sorvegliare.
 
 | | Fotovoltaico ZCS | Batteria Tesla |
 |---|---|---|
 | Script | `watchdog.php` | `tesla.php` |
-| Workflow | `.github/workflows/watchdog.yml` | `.github/workflows/tesla.yml` |
 | Stato | `state.json` | `state-tesla.json` |
 | Prefisso mail | `[FV ZCS]` | `[Powerwall]` |
-| Cadenza | controllo ogni 5 min | controllo ogni 10 min |
+| Uscite del job | `notify` / `subject` / `body` | `tesla_notify` / `tesla_subject` / `tesla_body` |
+
+`.github/workflows/tesla.yml` non ha piu' un cron: resta la cassetta degli
+attrezzi della batteria (`authurl`, `register`, `exchange`, `sites`, `dump`,
+`test`), da lanciare a mano.
+
+**Ogni mail porta la misura di entrambi gli impianti.** In fondo al messaggio,
+sotto `-- Situazione rilevata --`, ci sono le due righe con stato, freschezza
+del dato e riepilogo: un inverter fermo si legge diversamente se la batteria e'
+carica o se e' a terra. Il dato dell'altro impianto si legge dal suo file di
+stato, mai chiamando la sua API: se quel watchdog non ha mai girato il blocco
+lo dichiara, e se la misura e' piu' vecchia di due ore lo segnala invece di
+spacciarla per attuale.
 
 ---
 
