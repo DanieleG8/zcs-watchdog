@@ -1,4 +1,4 @@
-name: ZCS Watchdog
+name: Watchdog impianto (fotovoltaico + batteria)
 
 on:
   schedule:
@@ -48,10 +48,11 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: "8.2"
-          extensions: curl, json
+          # sodium serve a tesla.php per risalvare il refresh token nei Secrets
+          extensions: curl, json, sodium
           coverage: none
 
-      - name: Run watchdog
+      - name: Controlla impianto e batteria
         id: wd
         env:
           # --- Secrets ZCS (Settings > Secrets and variables > Actions) ---
@@ -72,6 +73,20 @@ jobs:
           RENOTIFY_HOURS:    ${{ vars.RENOTIFY_HOURS }}
           GUIDE_URL:         ${{ vars.GUIDE_URL }}
           LASTUPDATE_IS_UTC: ${{ vars.LASTUPDATE_IS_UTC }}
+          # --- Batteria Tesla: gira nello stesso job, cosi' un solo risveglio
+          #     copre tutti e due gli impianti e ogni mail li puo' citare entrambi.
+          TESLA_CLIENT_ID:     ${{ vars.TESLA_CLIENT_ID || secrets.TESLA_CLIENT_ID }}
+          TESLA_REDIRECT_URI:  ${{ vars.TESLA_REDIRECT_URI || secrets.TESLA_REDIRECT_URI }}
+          TESLA_CLIENT_SECRET: ${{ secrets.TESLA_CLIENT_SECRET }}
+          TESLA_REFRESH_TOKEN: ${{ secrets.TESLA_REFRESH_TOKEN }}
+          TESLA_SITE_ID:       ${{ vars.TESLA_SITE_ID || secrets.TESLA_SITE_ID }}
+          GH_SECRETS_TOKEN:    ${{ secrets.GH_SECRETS_TOKEN }}
+          TESLA_REGION:              ${{ vars.TESLA_REGION }}
+          TESLA_STALE_LIMIT_MIN:     ${{ vars.TESLA_STALE_LIMIT_MIN }}
+          TESLA_OFFGRID_PERSIST_MIN: ${{ vars.TESLA_OFFGRID_PERSIST_MIN }}
+          TESLA_OFFGRID_GRID_W:      ${{ vars.TESLA_OFFGRID_GRID_W }}
+          TESLA_UNREACH_PERSIST_MIN: ${{ vars.TESLA_UNREACH_PERSIST_MIN }}
+          TESLA_SOC_MIN_PERCENT:     ${{ vars.TESLA_SOC_MIN_PERCENT }}
           TZ: Europe/Rome
           # --- Loop interno (rimedio ai cron saltati da GitHub) ---
           WD_MODE:           ${{ inputs.mode || 'run' }}
@@ -81,10 +96,23 @@ jobs:
         run: |
           set +e -uo pipefail
 
+          # I due impianti si controllano nello stesso giro, ma restano
+          # indipendenti: ognuno ha il suo stato, le sue soglie e le sue mail.
+          # Se uno dei due script muore, l'altro viene eseguito lo stesso.
+          controlla() {
+            php watchdog.php
+            rc=$?
+            [ "$rc" -ne 0 ] && echo "ATTENZIONE: watchdog.php uscito con codice $rc"
+            php tesla.php
+            rc=$?
+            [ "$rc" -ne 0 ] && echo "ATTENZIONE: tesla.php uscito con codice $rc"
+            return 0
+          }
+
           case "$WD_MODE" in
             dump) php watchdog.php --dump; exit $? ;;
             test) php watchdog.php --test; exit $? ;;
-            once) php watchdog.php;        exit $? ;;
+            once) controlla;               exit 0  ;;
           esac
 
           deadline=$(( $(date +%s) + LOOP_MINUTES * 60 ))
@@ -92,13 +120,11 @@ jobs:
           while :; do
             n=$(( n + 1 ))
             echo "--- controllo #$n ($(date -u +%H:%M:%S) UTC) ---"
-            php watchdog.php
-            rc=$?
-            [ "$rc" -ne 0 ] && echo "ATTENZIONE: watchdog.php uscito con codice $rc"
+            controlla
 
-            # Se lo script ha deciso di notificare, esco subito: la mail parte
-            # nello step successivo (max ~LOOP_INTERVAL_SEC di ritardo, non 55 min).
-            if grep -qx 'notify=1' "$GITHUB_OUTPUT" 2>/dev/null; then
+            # Se uno dei due ha deciso di notificare, esco subito: le mail
+            # partono negli step successivi (ritardo max ~LOOP_INTERVAL_SEC).
+            if grep -qxE '(tesla_)?notify=1' "$GITHUB_OUTPUT" 2>/dev/null; then
               echo "Notifica richiesta: esco dal loop per inviarla."
               break
             fi
@@ -111,7 +137,7 @@ jobs:
           done
           echo "Loop terminato dopo $n controlli."
 
-      - name: Send email
+      - name: Send email (fotovoltaico)
         # Parte solo quando lo script ha deciso di notificare (allarme / rientro / test)
         if: steps.wd.outputs.notify == '1'
         uses: dawidd6/action-send-mail@v3
@@ -126,18 +152,33 @@ jobs:
           from:           ZCS Watchdog <${{ secrets.MAIL_FROM }}>
           body:           ${{ steps.wd.outputs.body }}
 
+      - name: Send email (batteria)
+        # Notifica separata: se scattano insieme partono due mail distinte.
+        if: steps.wd.outputs.tesla_notify == '1'
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.MAIL_SERVER }}
+          server_port:    ${{ secrets.MAIL_PORT }}
+          secure:         true
+          username:       ${{ secrets.MAIL_USERNAME }}
+          password:       ${{ secrets.MAIL_PASSWORD }}
+          subject:        ${{ steps.wd.outputs.tesla_subject }}
+          to:             ${{ secrets.MAIL_TO }}
+          from:           ZCS Watchdog <${{ secrets.MAIL_FROM }}>
+          body:           ${{ steps.wd.outputs.tesla_body }}
+
       - name: Persist state
         if: always()
         shell: bash
         run: |
           set -uo pipefail
-          if git diff --quiet -- state.json; then
-            echo "state.json invariato, nessun commit."
+          if git diff --quiet -- state.json state-tesla.json; then
+            echo "Stati invariati, nessun commit."
             exit 0
           fi
           git config user.name  "zcs-watchdog[bot]"
           git config user.email "actions@users.noreply.github.com"
-          git add state.json
+          git add state.json state-tesla.json
           git commit -m "state: aggiornamento $(date -u +%FT%TZ)"
           for i in 1 2 3; do
             git push && exit 0

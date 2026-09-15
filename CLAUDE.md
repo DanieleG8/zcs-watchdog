@@ -1,8 +1,17 @@
 # Note per chi lavora su questo repo
 
-Due watchdog indipendenti sorvegliano un impianto reale: `watchdog.php` guarda
-l'inverter fotovoltaico ZCS, `tesla.php` la batteria Powerwall. Girano da soli su
-GitHub Actions e mandano mail a persone che poi vanno a controllare l'impianto.
+Due watchdog sorvegliano un impianto reale: `watchdog.php` guarda l'inverter
+fotovoltaico ZCS, `tesla.php` la batteria Powerwall. Girano da soli su GitHub
+Actions e mandano mail a persone che poi vanno a controllare l'impianto.
+
+**Condividono il job ma non la logica.** Stanno nello stesso loop di
+`watchdog.yml` perche' lo scheduler di GitHub e' avaro di risvegli e uno solo
+deve coprirli entrambi. Restano pero' due watchdog distinti: stato, soglie,
+condizioni e mail separate, uscite con prefissi diversi (`notify` /
+`tesla_notify`), e il fallimento di uno non deve mai impedire l'esecuzione
+dell'altro. L'unico punto di contatto e' presentazionale: ogni notifica cita la
+misura dell'altro impianto leggendola dal suo **file di stato**, mai chiamando
+la sua API. Quel dato non entra in nessuna decisione.
 
 Il modo in cui questo sistema fallisce non e' andare in crash: e' **restare
 zitto quando doveva parlare**, o **parlare quando non doveva**. Un allarme che

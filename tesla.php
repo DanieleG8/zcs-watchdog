@@ -66,7 +66,13 @@ $WEBHOOK_URL  = env('WEBHOOK_URL', '');
 // Guida alle mail per chi le riceve (vedi RIFERIMENTO.md).
 const GUIDE_URL = 'https://claude.ai/code/artifact/19aa137e-428a-4742-89c8-e0df7f06aaa9';
 
-const STATE_FILE = __DIR__ . '/state-tesla.json';
+const STATE_FILE   = __DIR__ . '/state-tesla.json';
+const STATE_ALTRO  = __DIR__ . '/state.json';
+const ETICHETTA_MIA   = 'Batteria Tesla';
+const ETICHETTA_ALTRA = 'Fotovoltaico';
+
+// Misura del giro corrente: finisce nello stato e in fondo a ogni notifica.
+$MISURA = [];
 
 if (!defined('TESLA_WATCHDOG_TEST')) {
     exit(main($argv ?? []));
@@ -231,10 +237,11 @@ function evaluateCondition(array $live, int $now, array $cfg): array
  */
 function handleCondition(string $condition, string $detail, ?array $live): int
 {
-    global $OFFGRID_PERSIST_MIN, $UNREACH_PERSIST_MIN, $RENOTIFY_HOURS;
+    global $OFFGRID_PERSIST_MIN, $UNREACH_PERSIST_MIN, $RENOTIFY_HOURS, $MISURA;
 
     $state = loadState();
     $now   = time();
+    $MISURA = ['status' => $condition, 'riepilogo' => $detail, 'riepilogo_ts' => $now];
     $prev  = $state['status'] ?? 'ok';
     $hb    = date('Y-m-d');
 
@@ -618,6 +625,13 @@ function loadState(): array
 
 function saveState(array $s): void
 {
+    global $MISURA;
+    // La misura viaggia nello stato cosi' l'altro watchdog puo' citarla nelle
+    // sue mail senza interrogare questa API.
+    if (isset($MISURA['riepilogo'])) {
+        $s['riepilogo']    = $MISURA['riepilogo'];
+        $s['riepilogo_ts'] = $MISURA['riepilogo_ts'];
+    }
     file_put_contents(STATE_FILE, json_encode($s, JSON_PRETTY_PRINT) . "\n", LOCK_EX);
 }
 
@@ -643,20 +657,80 @@ function conGuida(string $body): string
     return $body . "\n\n--\nCosa significa questa mail e cosa fare: " . $url;
 }
 
+
+/* ---- Quadro di entrambi gli impianti ---------------------------------- */
+
+/**
+ * Chi riceve un allarme vuole sapere cosa sta succedendo, non solo cosa e'
+ * scattato: un inverter fermo si legge diversamente se la batteria e' carica
+ * o se e' a terra. Ogni notifica porta quindi la misura di tutti e due.
+ *
+ * Il dato dell'altro impianto si legge dal suo file di stato, mai chiamando la
+ * sua API: i due watchdog restano indipendenti, e se quello la' e' fermo il
+ * blocco lo dichiara invece di inventare.
+ */
+function etaLeggibile(int $secondi): string
+{
+    $min = (int) round(max(0, $secondi) / 60);
+    if ($min < 1)  return 'adesso';
+    if ($min < 60) return "$min min fa";
+    $ore = intdiv($min, 60);
+    $res = $min % 60;
+    return $res > 0 ? "{$ore}h{$res}m fa" : "{$ore}h fa";
+}
+
+function bloccoImpianto(string $etichetta, array $stato, int $now, int $vecchiaOltreMin = 120): string
+{
+    $riep = trim((string) ($stato['riepilogo'] ?? ''));
+    if ($riep === '') return "$etichetta: nessuna misura disponibile.";
+
+    $ts    = (int) ($stato['riepilogo_ts'] ?? 0);
+    $quando = $ts > 0 ? etaLeggibile($now - $ts) : 'data ignota';
+    $riga   = sprintf('%s [%s] - %s', $etichetta,
+        strtoupper((string) ($stato['status'] ?? '?')), $quando);
+
+    // Una misura vecchia non va spacciata per la situazione di adesso.
+    if ($ts > 0 && ($now - $ts) > $vecchiaOltreMin * 60) {
+        $riga .= ' - ATTENZIONE: misura vecchia, puo' . "'" . ' non essere la situazione attuale';
+    }
+    return $riga . "\n  " . $riep;
+}
+
+function leggiStato(string $file): array
+{
+    if (!is_file($file)) return [];
+    $j = json_decode((string) file_get_contents($file), true);
+    return is_array($j) ? $j : [];
+}
+
+function quadroImpianti(array $mio, array $altro, int $now): string
+{
+    return "-- Situazione rilevata --\n"
+        . bloccoImpianto(ETICHETTA_MIA, $mio, $now) . "\n"
+        . bloccoImpianto(ETICHETTA_ALTRA, $altro, $now);
+}
+
 function notify(string $tag, string $body): void
 {
     global $TG_BOT_TOKEN, $TG_CHAT_ID, $WEBHOOK_URL;
 
+    global $MISURA;
+    $now  = time();
+    $mio  = $MISURA ?: leggiStato(STATE_FILE);
+    $body = $body . "\n\n" . quadroImpianti($mio, leggiStato(STATE_ALTRO), $now);
     $body = conGuida($body);
 
     // Come nel watchdog fotovoltaico: lo script decide QUANDO notificare,
     // l'invio SMTP lo fa lo step successivo del workflow.
     $ghOut = getenv('GITHUB_OUTPUT');
     if ($ghOut !== false && $ghOut !== '') {
+        // Prefisso distinto: girando nello stesso job dell'altro watchdog, due
+        // chiavi 'notify' nello stesso GITHUB_OUTPUT si sovrascriverebbero e
+        // una delle due mail non partirebbe.
         $d = '__TESLAEOF__';
-        $out = "notify=1\n"
-             . "subject=[Powerwall] $tag\n"
-             . "body<<$d\n" . $body . "\n$d\n";
+        $out = "tesla_notify=1\n"
+             . "tesla_subject=[Powerwall] $tag\n"
+             . "tesla_body<<$d\n" . $body . "\n$d\n";
         @file_put_contents($ghOut, $out, FILE_APPEND);
     }
 

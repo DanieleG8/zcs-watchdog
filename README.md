@@ -6,12 +6,16 @@ se l'impianto smette di produrre o l'inverter va offline.
 
 Nel repo convivono due watchdog indipendenti:
 
-| Workflow | Cosa guarda | Stato | Istruzioni |
-|----------|-------------|-------|------------|
-| `watchdog.yml` (`watchdog.php`) | inverter fotovoltaico ZCS Azzurro | `state.json` | `ISTRUZIONI.md` |
-| `tesla.yml` (`tesla.php`) | batteria Tesla Powerwall via Fleet API | `state-tesla.json` | `ISTRUZIONI-TESLA.md` |
+| Script | Cosa guarda | Stato | Istruzioni |
+|--------|-------------|-------|------------|
+| `watchdog.php` | inverter fotovoltaico ZCS Azzurro | `state.json` | `ISTRUZIONI.md` |
+| `tesla.php` | batteria Tesla Powerwall via Fleet API | `state-tesla.json` | `ISTRUZIONI-TESLA.md` |
 
-Condividono i secret `MAIL_*` e i canali di notifica; per il resto sono separati.
+Girano **nello stesso job** (`watchdog.yml`), uno dopo l'altro a ogni controllo:
+un solo risveglio copre entrambi gli impianti, e ogni mail puo' riportare la
+misura di tutti e due. Restano pero' indipendenti — stato, soglie e mail sono
+separati, e il fallimento di uno non ferma l'altro. `tesla.yml` non e' piu'
+schedulato: contiene le modalita' di configurazione e diagnosi della batteria.
 
 **[RIFERIMENTO.md](RIFERIMENTO.md)** elenca tutte le mail che i due watchdog possono
 mandare, da quale campo dell'API nasce ogni valore, e le soglie attive.

@@ -159,7 +159,7 @@ Variables utili (tab **Variables**, tutte opzionali):
 | `TESLA_UNREACH_PERSIST_MIN` | 30      | minuti di API muta prima di avvisare       |
 | `TESLA_SOC_MIN_PERCENT`     | 0       | soglia carica minima (0 = controllo spento)|
 | `TESLA_OFFGRID_GRID_W`      | 200     | watt di scambio oltre i quali un 'off_grid' dichiarato non e' credibile |
-| `TESLA_LOOP_INTERVAL_SEC`   | 600     | secondi tra un controllo e il successivo   |
+| `TESLA_LOOP_INTERVAL_SEC`   | 600     | secondi tra un controllo e il successivo, **solo** per la modalita' `run` lanciata da questo workflow: il controllo periodico usa `LOOP_INTERVAL_SEC` |
 | `GUIDE_URL`                 | —       | link alla guida in fondo alle mail (`off` per toglierlo) |
 
 ## Passo 5 — Registrazione una tantum del partner account
@@ -204,8 +204,10 @@ Il token non viene mai stampato nei log.
    `battery_power`, `island_status`, `timestamp` ecc. Se li vedi, funziona.
 3. **Run workflow → mode: `test`** → deve arrivarti l'email `[Powerwall] TEST`.
 
-Da qui il workflow gira da solo come quello fotovoltaico: il cron sveglia il job,
-che poi ricontrolla ogni 10 minuti per ~55 minuti.
+Da qui in poi la batteria viene controllata dal workflow **Watchdog impianto**
+insieme al fotovoltaico, ogni cinque minuti: un solo risveglio copre entrambi, e
+ogni mail riporta la misura di tutti e due. Questo workflow resta per le
+modalita' qui sopra, che si lanciano a mano quando servono.
 
 ---
 

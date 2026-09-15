@@ -1,10 +1,10 @@
-name: Tesla Powerwall Watchdog
+name: Tesla Powerwall - configurazione e diagnosi
 
+# Il controllo periodico della batteria vive dentro "Watchdog impianto":
+# un solo risveglio copre entrambi gli impianti, e le mail possono citarli
+# tutti e due. Qui restano le modalita' di configurazione e diagnosi, che si
+# lanciano a mano.
 on:
-  schedule:
-    # Come per il watchdog fotovoltaico: il cron serve solo a svegliare il job,
-    # la cadenza reale la fa il loop interno (LOOP_MINUTES / LOOP_INTERVAL_SEC).
-    - cron: "*/15 * * * *"
   repository_dispatch:
     types: [tesla-check]
   workflow_dispatch:
