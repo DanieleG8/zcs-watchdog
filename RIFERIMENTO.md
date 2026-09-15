@@ -53,7 +53,7 @@ il dettaglio con i numeri del momento e chiude con da quanto dura l'anomalia.
 | **NESSUNA PRODUZIONE (contatore non disponibile)** | l'API non ha restituito il contatore di energia, si giudica sulla sola potenza istantanea | 90 min di persistenza |
 | **INVERTER OFFLINE (nessun dato)** | il `lastUpdate` dell'inverter e' fermo da troppo: l'inverter non parla piu' col portale | 60 min |
 | **MONITORAGGIO CIECO (API non raggiungibile)** | l'API ZCS non risponde, o risponde senza dati validi. Non sai nulla dell'impianto | 30 min |
-| **RIENTRO** | l'impianto e' tornato a produrre | subito |
+| **RIENTRO** | si e' chiusa una delle anomalie sopra. Il testo dice **quale**: "Impianto tornato a produrre" solo se la produzione e' stata misurata, altrimenti "Inverter tornato a trasmettere" con l'avvertenza che la produzione non e' verificata (o che l'ultima misura era negativa) | subito |
 | **TEST** | solo se la lanci a mano (`mode: test`) | — |
 
 ### Batteria — `[Powerwall]`
@@ -76,6 +76,11 @@ il dettaglio con i numeri del momento e chiude con da quanto dura l'anomalia.
 - **Niente rientri fantasma**: il RIENTRO parte solo se l'allarme corrispondente
   era stato davvero spedito. Un guasto risolto prima della soglia di persistenza
   non genera ne' allarme ne' "tutto risolto".
+- **La notte non chiude un allarme di produzione.** Al buio non si misura niente,
+  e "non misurabile" non vuol dire "risolto": il verdetto negativo sopravvive
+  fino alla mattina dopo, cosi' un impianto ancora fermo torna in allarme appena
+  si apre la finestra diurna invece di ripartire con la fedina pulita. Si azzera
+  solo se il contatore riparte da capo, cioe' se l'inverter e' stato sostituito.
 
 ---
 

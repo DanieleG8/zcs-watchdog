@@ -133,5 +133,57 @@ list($c, $d, $s) = evaluateProduction(nodo(218530.0), $giorno, [], $cfg);
 check('primo giro senza stato -> nessun allarme', 'ok', $c);
 check('  e la finestra parte adesso', $giorno, $s['ref_ts']);
 
+echo "\nIL CASO DEL 14-15/09: la notte non cancella il guasto\n";
+
+// Ieri l'impianto era fermo e l'allarme era partito. Alle 20:41 l'inverter ha
+// smesso di trasmettere, alle 00:06 e' partito INVERTER OFFLINE, alle 07:25
+// l'inverter e' tornato a parlare e il watchdog ha spedito "Impianto tornato a
+// produrre" mentre il contatore era fermo sullo stesso valore da venti ore.
+
+// 1. Lo stale non deve dimenticare che la produzione era gia' giudicata ferma.
+list($c, $d, $s) = evaluateProduction(
+    nodo(218529.9, 0, $giorno, gmdate('Y-m-d\TH:i:s\Z', $giorno - 7200)),
+    $giorno, finestra(218529.9, 120, true), $cfg
+);
+check('inverter muto mentre era gia in allarme -> stale', 'stale', $c);
+check('  ma il verdetto sulla produzione resta negativo', true, $s['prod_bad']);
+
+// 2. Nemmeno la notte lo cancella: al buio non si misura, e "non misurabile"
+//    non vuol dire "risolto".
+list($c, $d, $s) = evaluateProduction(nodo(218529.9, 0, $notte), $notte, finestra(218529.9, 300, true, $notte), $cfg);
+check('notte con allarme produzione in corso -> nessun allarme nuovo', 'ok', $c);
+check('  ma il verdetto negativo sopravvive fino all alba', true, $s['prod_bad']);
+check('  e la finestra riparte comunque dal presente', $notte, $s['ref_ts']);
+
+// 3. Un contatore che riparte da zero e' un inverter nuovo: li' si azzera tutto.
+list($c, $d, $s) = evaluateProduction(nodo(5.0), $giorno, finestra(218530.0, 300, true), $cfg);
+check('contatore ripartito da capo -> verdetto azzerato', false, $s['prod_bad']);
+
+// 4. Primo giro senza stato: nessuna eredita' da conservare.
+list($c, $d, $s) = evaluateProduction(nodo(218530.0), $giorno, [], $cfg);
+check('primo giro senza stato -> verdetto pulito', false, $s['prod_bad']);
+
+echo "\ntestoRientro — un rientro dice da cosa si rientra\n";
+
+check('rientro dalla produzione -> lo dice',
+    'Impianto tornato a produrre.', testoRientro('zero', false));
+check('rientro dal ripiego sulla potenza -> idem',
+    'Impianto tornato a produrre.', testoRientro('zeropower', false));
+
+$t = testoRientro('stale', true);
+check('IL MESSAGGIO SBAGLIATO DI STAMATTINA: rientro da stale con guasto aperto', true,
+    str_contains($t, 'Inverter tornato a trasmettere'));
+// La frase affermativa, non la sottostringa: 'NON risulta tornato a produrre'
+// contiene 'tornato a produrre' ed e' esattamente l'opposto di una promessa.
+check('  non promette produzione', false, str_contains($t, 'Impianto tornato a produrre'));
+check('  e avverte che il guasto e ancora li', true, str_contains($t, 'NON risulta tornato a produrre'));
+
+$t = testoRientro('stale', false);
+check('rientro da stale senza guasto noto -> resta prudente', true,
+    str_contains($t, "non e' ancora stata misurata"));
+
+$t = testoRientro('unreachable', false);
+check('rientro da API muta -> parla di monitoraggio', true, str_contains($t, 'monitoraggio ci vede'));
+
 echo "\n" . ($fails === 0 ? "Tutte le prove sono passate.\n" : "$fails prove fallite.\n");
 exit($fails === 0 ? 0 : 1);

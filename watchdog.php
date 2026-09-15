@@ -140,7 +140,7 @@ if ($condition === 'ok') {
     // Il rientro si annuncia solo se l'allarme era stato davvero notificato:
     // altrimenti si manda un "tutto risolto" per un guasto mai comunicato.
     if ($prev !== 'ok' && ($state['last_notified'] ?? 0) > 0) {
-        notify('RIENTRO', "Impianto tornato a produrre.\n$detail");
+        notify('RIENTRO', testoRientro($prev, (bool) ($energy['prod_bad'] ?? false)) . "\n$detail");
         logline("RIENTRO da '$prev'. $detail");
     } elseif ($prev !== 'ok') {
         logline("Rientro da '$prev' senza notifica: l'allarme non era mai stato inviato. $detail");
@@ -192,6 +192,30 @@ exit(0);
 /* ============================== Funzioni ============================== */
 
 /**
+ * Il testo di un rientro deve dire COSA e' rientrato. "Impianto tornato a
+ * produrre" spedito alla fine di un allarme di comunicazione e' una bugia:
+ * l'inverter ha ripreso a parlare, della produzione non si sa nulla. E se
+ * l'ultima misura era negativa, va detto a chiare lettere che il guasto
+ * che ha fatto partire tutto e' ancora li'.
+ */
+function testoRientro(string $prev, bool $prodBad): string
+{
+    if ($prev === 'zero' || $prev === 'zeropower') {
+        return 'Impianto tornato a produrre.';
+    }
+
+    $cosa = [
+        'stale'       => 'Inverter tornato a trasmettere.',
+        'unreachable' => 'API di nuovo raggiungibile: il monitoraggio ci vede.',
+    ][$prev] ?? 'Anomalia rientrata.';
+
+    return $cosa . ($prodBad
+        ? ' ATTENZIONE: riguarda solo il collegamento. L\'ultima misura di produzione'
+          . ' era negativa, quindi l\'impianto NON risulta tornato a produrre.'
+        : ' Riguarda solo il collegamento: la produzione non e\' ancora stata misurata.');
+}
+
+/**
  * Decide la condizione incrociando due segnali indipendenti: la potenza
  * istantanea e l'avanzamento del contatore di energia totale.
  *
@@ -211,10 +235,15 @@ function evaluateProduction(array $node, int $now, array $state, array $cfg): ar
     $soglia = (float) $cfg['zero_w_threshold'];
     $finestra = (int) $cfg['energy_window_min'];
 
+    // prod_bad si trascina: un inverter che smette di parlare non e' un inverter
+    // che ha ripreso a produrre. Azzerarlo qui faceva dimenticare l'allarme
+    // produzione appena calava il buio.
+    $prodBadPrec = (bool) ($state['prod_bad'] ?? false);
+
     if ($ageMin > $cfg['stale_limit_min']) {
         return ['stale', sprintf('Ultimo dato %s (%.0f min fa).',
             $lastTs ? date('Y-m-d H:i:s', $lastTs) : 'n/d', $ageMin),
-            ['etot_ref' => $state['etot_ref'] ?? null, 'ref_ts' => $now, 'prod_bad' => false]];
+            ['etot_ref' => $state['etot_ref'] ?? null, 'ref_ts' => $now, 'prod_bad' => $prodBadPrec]];
     }
 
     $isDay = isDaytime($now, $cfg['lat'], $cfg['lon'], $cfg['day_margin_min']);
@@ -223,7 +252,7 @@ function evaluateProduction(array $node, int $now, array $state, array $cfg): ar
     // Senza contatore non si puo' misurare nulla: si torna al vecchio criterio
     // della sola potenza istantanea, con la sua attesa (ZERO_PERSIST_MIN).
     if ($etot === null) {
-        $vuoto = ['etot_ref' => null, 'ref_ts' => $now, 'prod_bad' => false];
+        $vuoto = ['etot_ref' => null, 'ref_ts' => $now, 'prod_bad' => $prodBadPrec];
         if ($isDay && $powerW <= $soglia) {
             return ['zeropower', sprintf('Potenza %.0f W di giorno (soglia %.0f W), contatore di '
                 . 'energia non disponibile. Ultimo dato %s.', $powerW, $soglia, $quando), $vuoto];
@@ -236,10 +265,22 @@ function evaluateProduction(array $node, int $now, array $state, array $cfg): ar
     // deve trasformarsi in un allarme alla prima luce.
     $ref   = isset($state['etot_ref']) ? (float) $state['etot_ref'] : null;
     $refTs = (int) ($state['ref_ts'] ?? 0);
-    if (!$isDay || $ref === null || $refTs === 0 || $etot < $ref) {
-        // $etot < $ref = contatore azzerato o inverter sostituito: si riparte.
-        return ['ok', sprintf('Potenza %.0f W. Totale %.1f kWh. Ultimo dato %s.', $powerW, $etot, $quando),
+
+    // Contatore azzerato o inverter sostituito: si riparte davvero da capo,
+    // verdetto precedente compreso.
+    if ($etot < $ref) {
+        return ['ok', sprintf('Contatore ripartito da %.1f kWh. Potenza %.0f W. Ultimo dato %s.',
+            $etot, $powerW, $quando),
             ['etot_ref' => $etot, 'ref_ts' => $now, 'prod_bad' => false]];
+    }
+
+    // Di notte la finestra resta ferma al presente, ma il verdetto sulla
+    // produzione NON si azzera: al buio non si misura niente, e "non misurabile"
+    // non vuol dire "risolto". Il primo giro senza stato invece parte pulito.
+    if (!$isDay || $ref === null || $refTs === 0) {
+        $primoGiro = ($ref === null || $refTs === 0);
+        return ['ok', sprintf('Potenza %.0f W. Totale %.1f kWh. Ultimo dato %s.', $powerW, $etot, $quando),
+            ['etot_ref' => $etot, 'ref_ts' => $now, 'prod_bad' => $primoGiro ? false : $prodBadPrec]];
     }
 
     $minuti   = ($now - $refTs) / 60;
