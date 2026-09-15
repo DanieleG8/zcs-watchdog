@@ -5,8 +5,8 @@
     "last_ok": 1789452946,
     "hb": "2026-09-15",
     "etot_ref": 218529.9,
-    "ref_ts": 1789467681,
+    "ref_ts": 1789478555,
     "prod_bad": true,
-    "riepilogo": "Solo 0.00 kWh in 296 min: 0 W medi contro una soglia di 1000 W. Potenza istantanea 0 W. Totale 218529.9 kWh. Ultimo dato 12:18.",
-    "riepilogo_ts": 1789467681
+    "riepilogo": "Solo 0.00 kWh in 181 min: 0 W medi contro una soglia di 1000 W. Potenza istantanea 0 W. Totale 218529.9 kWh. Ultimo dato 15:19.",
+    "riepilogo_ts": 1789478555
 }
