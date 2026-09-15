@@ -101,5 +101,13 @@ restano cifrati e mascherati, ma tutto il resto e' in chiaro. Quindi:
   minuti ne esegue una frazione. Per questo il cron sveglia soltanto il job, che
   poi cicla al proprio ritmo per ~55 minuti. Non "sistemare" il cron togliendo
   il loop.
+- **I file di stato sono generati, e il loro salvataggio non si fonde.** Se due
+  run si sovrappongono, un `git pull --rebase` su `state.json` trova un
+  conflitto, lascia il repo in HEAD staccato con file non risolti e ogni
+  tentativo successivo muore con "Pulling is not possible because you have
+  unmerged files": lo stato di quel giro e' perso e il run e' rosso. Il passo
+  `Persist state` percio' non rebasa: riparte dal remoto e riscrive i file che
+  quel giro ha davvero toccato, perche' per una misura l'ultima scrittura e'
+  quella buona.
 - **Un secret di una sola lettera maschera quella lettera in tutti i log** del
   repo (`e***it 0`). Mai usare segnaposto corti.
