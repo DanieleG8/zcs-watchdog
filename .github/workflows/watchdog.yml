@@ -172,18 +172,36 @@ jobs:
         shell: bash
         run: |
           set -uo pipefail
-          if git diff --quiet -- state.json state-tesla.json; then
+          CAMBIATI=$(git diff --name-only -- state.json state-tesla.json)
+          if [ -z "$CAMBIATI" ]; then
             echo "Stati invariati, nessun commit."
             exit 0
           fi
           git config user.name  "zcs-watchdog[bot]"
           git config user.email "actions@users.noreply.github.com"
-          git add state.json state-tesla.json
-          git commit -m "state: aggiornamento $(date -u +%FT%TZ)"
+
+          # I file di stato sono GENERATI, non scritti a mano: in caso di
+          # collisione l'ultima misura e' quella buona, non c'e' niente da
+          # fondere. Il 15/09 un 'git pull --rebase' su state-tesla.json ha
+          # trovato un conflitto, lasciato il repo in HEAD staccato con file
+          # non risolti, e i tre tentativi sono falliti uno dietro l'altro
+          # ("Pulling is not possible because you have unmerged files"): lo
+          # stato di quel giro e' andato perso e il run e' finito rosso.
+          # Quindi: niente rebase. Si riparte dal remoto e si riscrive.
+          SALVA=$(mktemp -d)
+          for f in $CAMBIATI; do cp "$f" "$SALVA/$(basename "$f")"; done
+
           for i in 1 2 3; do
+            git add $CAMBIATI
+            git commit -m "state: aggiornamento $(date -u +%FT%TZ)" || true
             git push && exit 0
-            echo "Push fallito (tentativo $i): riallineo e riprovo."
-            git pull --rebase --autostash origin "${GITHUB_REF_NAME}" || true
+            echo "Push fallito (tentativo $i): riparto dal remoto e riscrivo."
+            git rebase --abort 2>/dev/null || true
+            git fetch origin "${GITHUB_REF_NAME}" || true
+            git reset --hard "origin/${GITHUB_REF_NAME}" || true
+            # Solo i file che questo giro ha davvero toccato: se l'altro lato
+            # ne ha aggiornato uno che noi non abbiamo scritto, resta il suo.
+            for f in $CAMBIATI; do cp "$SALVA/$(basename "$f")" "$f"; done
             sleep $(( i * 5 ))
           done
           echo "Push dello stato non riuscito." >&2
