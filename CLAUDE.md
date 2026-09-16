@@ -56,7 +56,7 @@ Aggiungere un allarme e' quindi: la condizione, la prova, la riga in
   Composer per una comodita'.
 - Commenti in italiano, senza accenti nei sorgenti (`e'`, `piu'`).
 
-## Le due decisioni da non smontare per sbaglio
+## Le decisioni da non smontare per sbaglio
 
 Sono controintuitive e nascono da guasti veri. Se ti sembrano complicazioni
 inutili, sono documentate in `RIFERIMENTO.md` e nei commit che le hanno
@@ -81,6 +81,15 @@ introdotte.
   un rientro all'alba, senza che ci fosse niente da fare. Di giorno lo stesso
   silenzio resta STALE. Non "semplificare" rimettendo `ok` al posto di `notte`:
   un `ok` notturno chiude gli allarmi aperti e spedisce rientri falsi.
+
+- **Non vedere non e' un verdetto.** `unreachable` e `auth` (in `tesla.php`,
+  costante `CIECHE`) dicono che il monitoraggio e' cieco, non che l'impianto
+  sta bene o male. Quando scattano, l'allarme d'impianto aperto viene messo da
+  parte in `imp_status` / `imp_since` / `imp_last_notified` e ritrovato intatto
+  al ritorno della telemetria: non riparte da zero, e se nel frattempo e'
+  rientrato il RIENTRO parte lo stesso. Senza questo, mezz'ora di 503 del cloud
+  Tesla, la notte del 16/09, ha riazzerato un'isola in corso da quindici ore.
+  E' la stessa idea della notte: **l'assenza di misura non e' una misura.**
 
 ## Il repository e' pubblico
 

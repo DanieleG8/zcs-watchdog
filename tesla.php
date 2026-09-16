@@ -52,7 +52,12 @@ const HTTP_TIMEOUT = 30;
 // Soglie
 $STALE_LIMIT_MIN     = (int) env('TESLA_STALE_LIMIT_MIN', '60');
 $OFFGRID_PERSIST_MIN = (int) env('TESLA_OFFGRID_PERSIST_MIN', '15');
-$UNREACH_PERSIST_MIN = (int) env('TESLA_UNREACH_PERSIST_MIN', '30');
+// 90 e non 30: la notte del 16/09 il gateway di Tesla ha alternato 504, 424 e
+// 503 per mezz'ora buona, e alle 03:12 e' partita una mail per un disservizio
+// del loro cloud. Sotto l'ora e mezza non si distingue un guasto da un
+// singhiozzo, e una mail notturna che non chiede niente a nessuno insegna
+// soltanto a non aprire le mail.
+$UNREACH_PERSIST_MIN = (int) env('TESLA_UNREACH_PERSIST_MIN', '90');
 $SOC_MIN_PERCENT     = (float) env('TESLA_SOC_MIN_PERCENT', '0'); // 0 = controllo disattivato
 $RENOTIFY_HOURS      = (int) env('RENOTIFY_HOURS', '4');
 
@@ -66,6 +71,22 @@ const GUIDE_URL = 'https://claude.ai/code/artifact/19aa137e-428a-4742-89c8-e0df7
 
 const STATE_FILE   = __DIR__ . '/state-tesla.json';
 const STATE_ALTRO  = __DIR__ . '/state.json';
+/**
+ * Non vedere non e' un verdetto sull'impianto.
+ *
+ * CIECHE sono le condizioni in cui il watchdog non ha misurato niente: l'API
+ * non risponde, il token non vale piu'. Dicono qualcosa di noi, non della
+ * batteria. IMPIANTO sono i verdetti veri, quelli letti su un dato.
+ *
+ * La differenza conta perche' una cecita' passeggera non deve cancellare un
+ * allarme in corso. Il 16/09 il cloud di Tesla si e' spento per mezz'ora nel
+ * mezzo di un'isola iniziata il giorno prima alle 14:40: al ritorno della
+ * telemetria l'isola e' ripartita da zero, e la mail successiva l'avrebbe
+ * annunciata come "in corso da 0 min" invece che da quindici ore.
+ */
+const CIECHE   = ['unreachable', 'auth'];
+const IMPIANTO = ['offgrid', 'soc', 'stale'];
+
 const ETICHETTA_MIA   = 'Batteria Tesla';
 const ETICHETTA_ALTRA = 'Fotovoltaico';
 
@@ -251,6 +272,93 @@ function evaluateCondition(array $live, int $now, array $cfg): array
 }
 
 /**
+ * Un "monitoraggio cieco" annunciato da solo lascia credere che sotto non ci
+ * fosse niente. Se invece la telemetria si e' spenta mentre un allarme era in
+ * corso, la mail deve dirlo: l'ultima cosa vista resta la cosa piu' probabile,
+ * e chi legge deve sapere che non e' finita, solo che non si vede piu'.
+ */
+function notaAllarmeSotto(string $condition, array $memoria): string
+{
+    if (!in_array($condition, CIECHE, true) || !isset($memoria['imp_status'])) return '';
+    $nomi = [
+        'offgrid' => 'sistema in isola (rete assente)',
+        'soc'     => 'batteria quasi scarica',
+        'stale'   => 'Powerwall senza telemetria',
+    ];
+    $che = $nomi[$memoria['imp_status']] ?? $memoria['imp_status'];
+    return "\n\nATTENZIONE: quando la telemetria si e' spenta era in corso un allarme ("
+         . $che . ', dalle ' . date('Y-m-d H:i', (int) $memoria['imp_since'])
+         . "). Non e' rientrato: semplicemente non si vede piu'.";
+}
+
+/**
+ * Da cosa si rientra, e se di quel qualcosa era stata mandata una mail.
+ *
+ * Guardare solo 'last_notified' non basta: se l'ultima condizione era cieca,
+ * la notifica che conta e' quella dell'allarme d'impianto rimasto sotto. Senza
+ * questo, un'isola notificata ieri e coperta stanotte da un buco di telemetria
+ * finirebbe senza che nessuno sappia che e' finita.
+ *
+ * Restituisce [da_cosa, gia_notificato].
+ */
+function rientroDa(array $state): array
+{
+    $prev = $state['status'] ?? 'ok';
+    $sotto = in_array($prev, CIECHE, true) ? ($state['imp_status'] ?? null) : null;
+    $notificato = ($state['last_notified'] ?? 0) > 0
+               || ($sotto !== null && ($state['imp_last_notified'] ?? 0) > 0);
+    return [$sotto ?? $prev, $notificato];
+}
+
+/**
+ * Quando comincia l'allarme corrente e quando era stato notificato l'ultima
+ * volta, tenendo conto che una cecita' passeggera non lo azzera.
+ *
+ * Tre casi:
+ *  - stessa condizione di prima: continua, ovvio;
+ *  - condizione cieca: l'allarme d'impianto che correva viene messo da parte
+ *    in imp_* e ritrovato dopo, per quanto duri il buco;
+ *  - telemetria tornata su un impianto che sta ancora come l'avevamo lasciato:
+ *    l'allarme riprende con la sua data vera, non riparte da adesso.
+ *
+ * Restituisce ['since', 'last_notified', 'memoria', 'ripreso'].
+ */
+function continuitaAllarme(array $state, string $condition, int $now): array
+{
+    $prev  = $state['status'] ?? 'ok';
+    $sotto = in_array($prev, CIECHE, true) ? ($state['imp_status'] ?? null) : null;
+
+    $memoria = [];
+    if (in_array($condition, CIECHE, true)) {
+        if (in_array($prev, IMPIANTO, true)) {
+            $memoria = [
+                'imp_status'        => $prev,
+                'imp_since'         => (int) ($state['since'] ?? $now),
+                'imp_last_notified' => (int) ($state['last_notified'] ?? 0),
+            ];
+        } elseif ($sotto !== null) {
+            $memoria = [
+                'imp_status'        => $sotto,
+                'imp_since'         => (int) ($state['imp_since'] ?? $now),
+                'imp_last_notified' => (int) ($state['imp_last_notified'] ?? 0),
+            ];
+        }
+    }
+
+    if ($prev === $condition) {
+        return ['since' => (int) ($state['since'] ?? $now),
+                'last_notified' => (int) ($state['last_notified'] ?? 0),
+                'memoria' => $memoria, 'ripreso' => false];
+    }
+    if ($sotto === $condition) {
+        return ['since' => (int) ($state['imp_since'] ?? $now),
+                'last_notified' => (int) ($state['imp_last_notified'] ?? 0),
+                'memoria' => $memoria, 'ripreso' => true];
+    }
+    return ['since' => $now, 'last_notified' => 0, 'memoria' => $memoria, 'ripreso' => false];
+}
+
+/**
  * Macchina a stati + anti-spam: identica nello spirito a watchdog.php.
  */
 function handleCondition(string $condition, string $detail, ?array $live): int
@@ -274,12 +382,15 @@ function handleCondition(string $condition, string $detail, ?array $live): int
 
     if ($condition === 'ok') {
         // Come nel watchdog fotovoltaico: niente "tutto risolto" per un allarme
-        // che non e' mai stato comunicato.
-        if ($prev !== 'ok' && ($state['last_notified'] ?? 0) > 0) {
+        // che non e' mai stato comunicato. Ma se l'ultima cosa vista era una
+        // cecita', l'allarme comunicato e' quello d'impianto che stava sotto:
+        // guardare solo 'last_notified' farebbe finire un'isola in silenzio.
+        list($daCosa, $notificato) = rientroDa($state);
+        if ($prev !== 'ok' && $notificato) {
             notify('RIENTRO', "Powerwall tornato normale.\n$detail");
-            logline("RIENTRO da '$prev'. $detail");
+            logline("RIENTRO da '$daCosa'. $detail");
         } elseif ($prev !== 'ok') {
-            logline("Rientro da '$prev' senza notifica: l'allarme non era mai stato inviato. $detail");
+            logline("Rientro da '$daCosa' senza notifica: l'allarme non era mai stato inviato. $detail");
         } else {
             logline("OK. $detail");
         }
@@ -287,19 +398,21 @@ function handleCondition(string $condition, string $detail, ?array $live): int
         return 0;
     }
 
-    if ($prev === $condition) {
-        $since        = $state['since'] ?? $now;
-        $lastNotified = $state['last_notified'] ?? 0;
-    } else {
-        $since        = $now;
-        $lastNotified = 0;
+    // Quello che si porta dietro una condizione cieca: l'allarme d'impianto che
+    // stava correndo, con la sua data di inizio e le sue notifiche gia' fatte.
+    $c            = continuitaAllarme($state, $condition, $now);
+    $since        = $c['since'];
+    $lastNotified = $c['last_notified'];
+    $memoria      = $c['memoria'];
+    if ($c['ripreso']) {
+        logline("Telemetria tornata: '$condition' prosegue da " . date('Y-m-d H:i', $since) . '.');
     }
 
     $elapsedMin = ($now - $since) / 60;
     if ($elapsedMin < $persistMin[$condition]) {
         logline(sprintf("PENDING '%s' %.0f/%d min. %s", $condition, $elapsedMin, $persistMin[$condition], $detail));
         saveState(['status' => $condition, 'since' => $since, 'last_notified' => $lastNotified,
-                   'last_ok' => $state['last_ok'] ?? 0, 'hb' => $hb]);
+                   'last_ok' => $state['last_ok'] ?? 0, 'hb' => $hb] + $memoria);
         return 0;
     }
 
@@ -314,6 +427,7 @@ function handleCondition(string $condition, string $detail, ?array $live): int
         ];
         $body = $titles[$condition] . "\n\n$detail\n\nAnomalia in corso dalle "
               . date('Y-m-d H:i', $since) . sprintf(' (%.0f min).', $elapsedMin);
+        $body .= notaAllarmeSotto($condition, $memoria);
         notify($titles[$condition], $body);
         $lastNotified = $now;
         logline("NOTIFICATO '$condition'. $detail");
@@ -322,7 +436,7 @@ function handleCondition(string $condition, string $detail, ?array $live): int
     }
 
     saveState(['status' => $condition, 'since' => $since, 'last_notified' => $lastNotified,
-               'last_ok' => $state['last_ok'] ?? 0, 'hb' => $hb]);
+               'last_ok' => $state['last_ok'] ?? 0, 'hb' => $hb] + $memoria);
     return 0;
 }
 
