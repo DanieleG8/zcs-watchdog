@@ -112,12 +112,14 @@ $energy = ['etot_ref' => $state['etot_ref'] ?? null, 'ref_ts' => $now, 'prod_bad
 
 if (!$ok) {
     $condition = 'unreachable';
-    $detail    = $err;
+    $detail    = spiegaErrore($err);
 } else {
     $node = extractNode($data, $THING_KEY);
     if ($node === null) {
         $condition = 'unreachable';
-        $detail    = 'Risposta senza dati validi (verifica auth/thingKey). Raw: ' . substr(json_encode($data), 0, 400);
+        $detail    = 'Il portale ZCS ha risposto, ma senza i dati dell\'impianto '
+                    . '(da controllare ZCS_AUTH_KEY e ZCS_THING_KEY). Dettaglio: '
+                    . rigaTecnica((string) json_encode($data)) . '.';
     } else {
         list($condition, $detail, $energy) = evaluateProduction($node, $now, $state, [
             'zero_w_threshold'  => $ZERO_W_THRESHOLD,
@@ -139,12 +141,29 @@ $MISURA = ['status' => $condition, 'riepilogo' => $detail, 'riepilogo_ts' => $no
 if ($condition === 'notte') {
     $prevNotte = $state['status'] ?? 'ok';
     logline("NOTTE (stato '$prevNotte' conservato). $detail");
+
+    // PERCHE' L'INVERTER TACE DI NOTTE, NON SI SA ANCORA.
+    // Il silenzio e' agganciato al sole (ultimo campione pochi minuti dopo il
+    // tramonto, primo poco dopo l'alba), ma questo non dice se a fermarsi sia
+    // l'inverter o soltanto la registrazione del portale: chi ha l'impianto
+    // dice che la sera non si spegne. La differenza si vede solo guardando
+    // l'intero nodo ZCS a notte fonda, e nessuno stara' sveglio a farlo.
+    // Quindi lo registra il watchdog: una riga all'ora, con gli identificativi
+    // dell'impianto omessi perche' questo log e' pubblico. Se fra le 22:00 e
+    // le 06:00 qualche campo cambia, l'inverter sta ancora parlando; se il
+    // nodo e' identico riga dopo riga, non arriva piu' niente.
+    $oraDump = date('Y-m-d H');
+    if (($state['notte_dump'] ?? '') !== $oraDump) {
+        logline('NOTTE, nodo ZCS cosi\' com\'e\': ' . nodoPerLog($node ?? null));
+    }
+
     saveState([
         'status'        => $prevNotte,
         'since'         => $state['since'] ?? $now,
         'last_notified' => $state['last_notified'] ?? 0,
         'last_ok'       => $state['last_ok'] ?? 0,
         'hb'            => date('Y-m-d'),
+        'notte_dump'    => $oraDump,
     ] + $energy);
     exit(0);
 }
@@ -416,6 +435,93 @@ function extractNode(?array $data, string $thing): ?array {
     if (isset($value[$thing]) && is_array($value[$thing])) return $value[$thing];
     $first = reset($value);
     return is_array($first) ? $first : null;
+}
+
+/**
+ * Un errore HTTP raccontato a chi la mail la riceve. Stessa idea del gemello
+ * in tesla.php: nella mail finiva il corpo grezzo della risposta tagliato a
+ * meta' parola, con HTML ed escape non risolte dentro. Chi riceve queste mail
+ * sa dove sta il quadro elettrico, non cosa sia un 503.
+ */
+function spiegaErrore(string $err): string {
+    if ($err === '') return '';
+    $codice = preg_match('/^HTTP (\d{3})/', $err, $m) ? (int) $m[1] : 0;
+
+    if (str_starts_with($err, 'cURL:')) {
+        return 'Non si riesce nemmeno a raggiungere il portale ZCS (la connessione non parte). '
+             . 'Dettaglio: ' . rigaTecnica($err) . '.';
+    }
+    $frasi = [
+        500 => 'Il portale ZCS ha un problema interno',
+        502 => 'Il portale ZCS non risponde',
+        503 => 'Il portale ZCS non risponde',
+        504 => 'Il portale ZCS risponde troppo lentamente e la richiesta scade',
+        429 => 'Il portale ZCS sta limitando le richieste: ne sono state fatte troppe',
+    ];
+    if (isset($frasi[$codice])) {
+        return $frasi[$codice] . " (errore $codice). Non e' un guasto dell'impianto: quasi sempre "
+             . 'rientra da solo. Dettaglio: ' . rigaTecnica($err) . '.';
+    }
+    if ($codice === 401 || $codice === 403) {
+        return "Il portale ZCS rifiuta le credenziali (errore $codice). Questo non rientra da solo: "
+             . 'vanno controllati ZCS_CLIENT_CODE e ZCS_AUTH_KEY. Dettaglio: ' . rigaTecnica($err) . '.';
+    }
+    if ($codice >= 400) {
+        return "Il portale ZCS ha risposto con un errore $codice. Dettaglio: " . rigaTecnica($err) . '.';
+    }
+    return rigaTecnica($err);
+}
+
+/** Il dettaglio tecnico su una riga: niente HTML, niente a capo, taglio su parola intera. */
+function rigaTecnica(string $err, int $max = 140): string {
+    $t = html_entity_decode(strip_tags($err), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    $t = trim(preg_replace('/\s+/u', ' ', $t) ?? '');
+    $t = rtrim($t, " .\t");
+    if ($t === '') return 'nessun dettaglio leggibile';
+    if (mb_strlen($t) <= $max) return $t;
+    $tagliato = mb_substr($t, 0, $max);
+    $spazio   = mb_strrpos($tagliato, ' ');
+    return rtrim($spazio > $max / 2 ? mb_substr($tagliato, 0, $spazio) : $tagliato, " ,;:") . '...';
+}
+
+/**
+ * Il nodo ZCS pronto per finire nel log, senza gli identificativi dell'impianto.
+ *
+ * Il log dei workflow di questo repo e' PUBBLICO: numeri di serie, thingKey e
+ * simili non ci devono comparire. I nomi dei campi si', perche' sono
+ * esattamente cio' che serve guardare.
+ */
+function nodoPerLog(?array $node): string {
+    if (!is_array($node)) return 'nessun nodo';
+    $fuori = [];
+    foreach ($node as $k => $v) {
+        if (chiaveSensibile((string) $k) || valoreIdentificativo($v)) {
+            $fuori[$k] = is_scalar($v) ? '[omesso, ' . strlen((string) $v) . ' caratteri]' : '[omesso]';
+            continue;
+        }
+        $fuori[$k] = is_scalar($v) || $v === null ? $v : '[' . gettype($v) . ']';
+    }
+    return json_encode($fuori, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+}
+
+/** Nomi di campo che non devono uscire. 'sn$' e non '\bsn\b': in 'deviceSn'
+ *  non c'e' nessun confine di parola prima di 'Sn', e quel seriale passava. */
+function chiaveSensibile(string $k): bool {
+    return (bool) preg_match('/key|serial|uuid|mac|token|passw|secret|code|^id$|sn$|^sn/i', $k);
+}
+
+/**
+ * Seconda rete, che non si fida dei nomi: i campi del portale ZCS non li
+ * conosciamo tutti, e quello nuovo che porta un seriale si chiamera' in un
+ * modo a cui nessuno ha pensato. Una stringa lunga, senza spazi e fatta solo
+ * di caratteri da identificativo si omette comunque. Le date no: sono la cosa
+ * che qui serve di piu' guardare.
+ */
+function valoreIdentificativo($v): bool {
+    if (!is_string($v) || strlen($v) <= 12) return false;
+    if (preg_match('/^\d{4}-\d{2}-\d{2}/', $v)) return false;   // una data resta
+    if (is_numeric($v)) return false;                            // una misura resta
+    return (bool) preg_match('/^[A-Za-z0-9._:-]+$/', $v);
 }
 
 function parseLastUpdate($raw, bool $isUtc): ?int {

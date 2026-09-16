@@ -373,6 +373,55 @@ check('senza niente sotto non inventa nulla', '', notaAllarmeSotto('unreachable'
 check('e su un allarme vero non c entra', '',
     notaAllarmeSotto('offgrid', ['imp_status' => 'soc', 'imp_since' => $isolaDa]));
 
+echo "\nLA MAIL DEL 16/09: un errore 503 detto a chi la mail la legge\n";
+
+// Il testo che e' arrivato davvero, riportato dal destinatario. Tagliato a
+// meta' parola ("503 Service" e basta), con l'HTML annidato dentro il JSON e
+// le escape \u003e non risolte. Ripetuto due volte nella stessa mail.
+$reale = 'HTTP 503. Body: {"response":null,"error":"https://powergate.prd.sn.tesla.services:443'
+       . '/api/v4/energy_site/live_status => <html>\r\n<head>'
+       . '<title>503 Service Temporarily Unavailable</title></head>'
+       . '\r\n<body>\r\n<center><h1>503 Service';
+
+$m = spiegaErrore($reale);
+check('IL CASO: 503 -> una frase, non un corpo HTTP', true,
+    str_contains($m, 'I server di Tesla non rispondono'));
+check('  dice a chi legge che non e l impianto', true,
+    str_contains($m, "Non e' un guasto dell'impianto"));
+check('  niente HTML', false, str_contains($m, '<html'));
+check('  niente escape \u003e non risolte', false, str_contains($m, '\u003e'));
+check('  e nemmeno il > che ne esce se si decodifica a meta', false, str_contains($m, '=>'));
+check('  niente \r\n letterali', false, str_contains($m, '\r\n'));
+check('  niente JSON grezzo', false, str_contains($m, '"response":null'));
+check('  il dettaglio tecnico resta, ma leggibile', true,
+    str_contains($m, 'Service Temporarily Unavailable'));
+check('  e tutto sta in una riga', false, str_contains($m, "\n"));
+
+// Il 424 e il 504 della stessa notte: stessa cura, frase diversa.
+check('424 -> dice che Tesla non legge il Powerwall', true, str_contains(
+    spiegaErrore('HTTP 424. Body: {"response":null,"error":"https://x => {Message: \"Error getting live status\", Status: 424}"}'),
+    'non riesce a leggere il Powerwall'));
+check('504 -> parla di lentezza, non di guasto', true, str_contains(
+    spiegaErrore('HTTP 504. Body: {"response":null,"error":"https://x => Gateway Timeout"}'),
+    'troppo lentamente'));
+
+// Un token rifiutato non rientra da solo: la mail non deve far credere il contrario.
+$a = spiegaErrore('HTTP 401. Body: {"error":"invalid_grant"}');
+check('401 -> avverte che serve intervenire', true, str_contains($a, 'non rientra da solo'));
+check('  e non promette che passa', false, str_contains($a, 'rientra da solo.'));
+
+check('connessione mai partita -> lo dice', true,
+    str_contains(spiegaErrore('cURL: Operation timed out after 30001 milliseconds'), 'non parte'));
+check('nessun errore -> nessuna frase', '', spiegaErrore(''));
+
+echo "\nIl dettaglio tecnico non si taglia a meta parola\n";
+check('un corpo enorme viene accorciato', true,
+    mb_strlen(rigaTecnica('x ' . str_repeat('parolalunga ', 80))) <= 145);
+check('  e il taglio si vede', true, str_contains(rigaTecnica(str_repeat('parolalunga ', 80)), '...'));
+check('  senza mozzare la parola', false,
+    (bool) preg_match('/parolalung\.\.\./', rigaTecnica(str_repeat('parolalunga ', 80))));
+check('un corpo vuoto non produce una riga muta', 'nessun dettaglio leggibile', rigaTecnica('<html></html>'));
+
 echo "\nLa pazienza sulla cecita e quella dichiarata\n";
 // Mezz'ora di 503 altrui, di notte, non e' un guasto: e' un singhiozzo.
 check('il predefinito di TESLA_UNREACH_PERSIST_MIN e 90 min', '90',
