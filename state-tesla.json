@@ -1,9 +1,9 @@
 {
-    "status": "offgrid",
-    "since": 1789478561,
-    "last_notified": 1789498983,
+    "status": "unreachable",
+    "since": 1789519349,
+    "last_notified": 1789521162,
     "last_ok": 1789467687,
     "hb": "2026-09-16",
-    "riepilogo": "Sistema in isola (island_status: off_grid_unintentional, grid_status: Inactive). Carica 10%, batteria 0 W, casa 4291 W, rete 4291 W, solare 0 W. ATTENZIONE, le misure di flusso non sono coerenti (il valore della rete ripete esattamente quello della casa; batteria e solare a zero mentre la casa risulta assorbire: quei watt non li fornisce nessuno): non usarle per dedurre lo stato della rete, guarda il contatore o l'app Tesla.",
-    "riepilogo_ts": 1789510532
+    "riepilogo": "HTTP 503. Body: {\"response\":null,\"error\":\"https:\/\/powergate.prd.sn.tesla.services:443\/api\/v4\/energy_site\/live_status =\\u003e \\u003chtml\\u003e\\r\\n\\u003chead\\u003e\\u003ctitle\\u003e503 Service Temporarily Unavailable\\u003c\/title\\u003e\\u003c\/head\\u003e\\r\\n\\u003cbody\\u003e\\r\\n\\u003ccenter\\u003e\\u003ch1\\u003e503 Service ",
+    "riepilogo_ts": 1789521162
 }
