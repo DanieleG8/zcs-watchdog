@@ -221,6 +221,66 @@ check('rientro da stale senza guasto noto -> resta prudente', true,
 $t = testoRientro('unreachable', false);
 check('rientro da API muta -> parla di monitoraggio', true, str_contains($t, 'monitoraggio ci vede'));
 
+echo "\nUn errore HTTP detto a chi la mail la legge\n";
+
+// La mail vera del 16/09 portava questo, tagliato a meta' parola, con l'HTML
+// dentro il JSON e le escape non risolte. Illeggibile per chiunque.
+$grezzo = 'HTTP 503. Body: {"response":null,"error":"https://portale/x => <html>'
+        . "\r\n" . '<head><title>503 Service Temporarily Unavailable';
+
+$m = spiegaErrore($grezzo);
+check('IL MESSAGGIO ILLEGGIBILE: 503 -> frase in italiano', true,
+    str_contains($m, 'Il portale ZCS non risponde'));
+check('  dice che non e colpa dell impianto', true, str_contains($m, "Non e' un guasto dell'impianto"));
+check('  niente HTML nel testo', false, str_contains($m, '<'));
+check('  niente a capo in mezzo', false, str_contains($m, "\n"));
+check('  e sta su una riga sola', true, mb_strlen($m) < 300);
+
+check('401 -> dice che non rientra da solo', true,
+    str_contains(spiegaErrore('HTTP 401. Body: {"error":"bad auth"}'), 'non rientra da solo'));
+check('  e nomina cosa controllare', true,
+    str_contains(spiegaErrore('HTTP 401. Body: {"error":"bad auth"}'), 'ZCS_AUTH_KEY'));
+check('connessione morta -> lo dice in chiaro', true,
+    str_contains(spiegaErrore('cURL: timed out'), 'non parte'));
+check('nessun errore -> nessuna frase', '', spiegaErrore(''));
+
+// Il taglio non deve spezzare una parola a meta'.
+$lungo = 'HTTP 500. Body: ' . str_repeat('parolalunga ', 60);
+$t = spiegaErrore($lungo);
+check('un corpo lunghissimo viene accorciato', true, mb_strlen($t) < 300);
+check('  e il taglio e segnalato', true, str_contains($t, '...'));
+check('  senza mozzare una parola', false, (bool) preg_match('/parolalung\.\.\./', $t));
+
+echo "\nIl nodo nel log non porta fuori identificativi (il log e pubblico)\n";
+
+$nodo = [
+    'thingKey'              => 'ZCS-SERIALE-VERO-123',
+    'deviceSn'              => 'SN9988776655',
+    'powerGenerating'       => 613,
+    'energyGeneratingTotal' => 218531.1,
+    'lastUpdate'            => '2026-09-15 19:40:06',
+    'annidato'              => ['a' => 1],
+];
+$log = nodoPerLog($nodo);
+check('il seriale non finisce nel log', false, str_contains($log, 'ZCS-SERIALE-VERO-123'));
+check('nemmeno il numero di serie del dispositivo', false, str_contains($log, 'SN9988776655'));
+check('  ma si sa che il campo c era', true, str_contains($log, 'thingKey'));
+check('  e quanto era lungo', true, str_contains($log, '20 caratteri'));
+check('i valori che servono restano leggibili', true, str_contains($log, '218531.1'));
+check('  compreso l orario dell ultimo dato', true, str_contains($log, '2026-09-15 19:40:06'));
+check('un campo annidato non esplode il log', true, str_contains($log, '[array]'));
+check('nessun nodo -> lo dice invece di rompersi', 'nessun nodo', nodoPerLog(null));
+
+// La seconda rete: un campo nuovo, con un nome a cui nessuno ha pensato, che
+// porta un identificativo. Il nome non aiuta, la forma del valore si'.
+$log = nodoPerLog(['riferimentoImpianto' => 'AZ9912XK77TQ0041', 'lastUpdate' => '2026-09-15 19:40:06',
+                   'temperatura' => 21.4, 'stato' => 'in produzione']);
+check('un identificativo con un nome insospettabile viene omesso lo stesso', false,
+    str_contains($log, 'AZ9912XK77TQ0041'));
+check('  una data non viene scambiata per un codice', true, str_contains($log, '2026-09-15 19:40:06'));
+check('  una misura resta', true, str_contains($log, '21.4'));
+check('  e una frase con spazi resta', true, str_contains($log, 'in produzione'));
+
 echo "\nquadro di entrambi gli impianti in ogni notifica\n";
 
 check('meno di un minuto', 'adesso', etaLeggibile(20));

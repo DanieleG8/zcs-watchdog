@@ -140,7 +140,8 @@ function main(array $argv): int
         }
         // Un token rifiutato non e' un blip di rete: niente attesa, si avvisa subito.
         $isAuth = (bool) preg_match('/invalid_grant|invalid_client|unauthorized|HTTP 40[013]/i', $err);
-        return handleCondition($isAuth ? 'auth' : 'unreachable', "Rinnovo token fallito: $err", null);
+        return handleCondition($isAuth ? 'auth' : 'unreachable',
+            'Rinnovo del collegamento a Tesla fallito. ' . spiegaErrore($err), null);
     }
 
     $path = $flag === '--sites' ? '/api/1/products' : "/api/1/energy_sites/$SITE_ID/live_status";
@@ -157,7 +158,8 @@ function main(array $argv): int
         list($access, $aerr) = getAccessToken(true);
         if ($access === null) {
             if ($diagnostica) { fwrite(STDERR, "Rinnovo token fallito: $aerr\n"); return 1; }
-            return handleCondition('auth', "Rinnovo token fallito: $aerr", null);
+            return handleCondition('auth',
+                'Rinnovo del collegamento a Tesla fallito. ' . spiegaErrore($aerr), null);
         }
         list($ok, $code, $data, $err) = apiGet($base, $access, $path);
     }
@@ -182,7 +184,8 @@ function main(array $argv): int
 
     if (!$ok || $live === null) {
         if ($diagnostica) { fwrite(STDERR, "Errore: " . ($ok ? 'risposta senza campo response.' : $err) . "\n"); return 1; }
-        return handleCondition('unreachable', $ok ? 'Risposta senza campo response.' : $err, null);
+        return handleCondition('unreachable',
+            $ok ? 'Tesla ha risposto, ma senza i dati del Powerwall.' : spiegaErrore($err), null);
     }
 
     // 3. Valutazione
@@ -272,6 +275,88 @@ function evaluateCondition(array $live, int $now, array $cfg): array
 }
 
 /**
+ * Un errore HTTP raccontato a chi la mail la riceve.
+ *
+ * Prima qui finiva il corpo grezzo della risposta, tagliato a 300 caratteri:
+ *
+ *   HTTP 503. Body: {"response":null,"error":"https://powergate...:443/api/v4/
+ *   energy_site/live_status =\u003e \u003chtml\u003e\r\n\u003chead\u003e...503 Service
+ *
+ * Tagliato a meta' parola, con l'HTML dentro il JSON e le escape non risolte.
+ * Chi riceve queste mail dell'impianto sa dove sta il quadro elettrico: da
+ * quella riga non ricava niente, e una mail che non si capisce vale zero anche
+ * quando ha ragione. Il codice resta scritto, perche' a chi mette le mani nel
+ * sistema serve, ma dopo la frase e su una riga sola.
+ */
+function spiegaErrore(string $err): string
+{
+    if ($err === '') return '';
+
+    $codice = preg_match('/^HTTP (\d{3})/', $err, $m) ? (int) $m[1] : 0;
+
+    if (str_starts_with($err, 'cURL:')) {
+        return "Non si riesce nemmeno a raggiungere i server di Tesla (la connessione non parte). "
+             . 'Dettaglio: ' . rigaTecnica($err) . '.';
+    }
+
+    $frasi = [
+        500 => 'I server di Tesla hanno un problema interno',
+        502 => 'I server di Tesla non rispondono',
+        503 => 'I server di Tesla non rispondono',
+        504 => 'I server di Tesla rispondono troppo lentamente e la richiesta scade',
+        424 => 'Tesla risponde, ma non riesce a leggere il Powerwall',
+        429 => 'Tesla sta limitando le richieste: ne sono state fatte troppe',
+    ];
+
+    if (isset($frasi[$codice])) {
+        return $frasi[$codice] . " (errore $codice). Non e' un guasto dell'impianto: quasi sempre "
+             . 'rientra da solo. Dettaglio: ' . rigaTecnica($err) . '.';
+    }
+    if ($codice === 401 || $codice === 403) {
+        return "Tesla rifiuta l'autorizzazione (errore $codice). Questo non rientra da solo: va "
+             . 'rifatto il collegamento all\'account Tesla. Dettaglio: ' . rigaTecnica($err) . '.';
+    }
+    if ($codice >= 400) {
+        return "Tesla ha risposto con un errore $codice. Dettaglio: " . rigaTecnica($err) . '.';
+    }
+    return rigaTecnica($err);
+}
+
+/**
+ * Il dettaglio tecnico ridotto a una riga leggibile: niente HTML, niente
+ * escape unicode, niente a capo, e un taglio su una parola intera.
+ */
+function rigaTecnica(string $err, int $max = 140): string
+{
+    // Il messaggio di Tesla sta dentro il JSON. Il corpo arriva gia' tagliato a
+    // 300 caratteri, quindi la stringa puo' non avere la virgoletta di
+    // chiusura: si prende comunque quello che c'e', altrimenti si ricadrebbe
+    // sul corpo grezzo, che e' esattamente cio' che si vuole evitare.
+    if (preg_match('/"error"\s*:\s*"((?:[^"\\\\]|\\\\.)*)("|$)/', $err, $m)) {
+        $err = $m[1];
+    }
+    // \u003e e compagnia: le escape JSON non risolte finivano nella mail.
+    $err = preg_replace_callback('/\\\\u([0-9a-fA-F]{4})/',
+        fn($u) => mb_chr(hexdec($u[1]), 'UTF-8') ?: '', $err) ?? $err;
+    $err = stripcslashes($err);
+    // Tesla antepone l'indirizzo del proprio servizio interno al messaggio:
+    // "https://powergate.../live_status => 503 Service...". Conta cio' che
+    // viene dopo la freccia.
+    if (($i = strpos($err, '=>')) !== false) $err = substr($err, $i + 2);
+
+    $t = html_entity_decode(strip_tags($err), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    $t = trim(preg_replace('/\s+/u', ' ', $t) ?? '');
+    $t = rtrim($t, " .\t\"");
+    if ($t === '') return 'nessun dettaglio leggibile';
+    if (mb_strlen($t) <= $max) return $t;
+
+    $tagliato = mb_substr($t, 0, $max);
+    $spazio   = mb_strrpos($tagliato, ' ');
+    // Meglio una parola in meno che una parola a meta'.
+    return rtrim($spazio > $max / 2 ? mb_substr($tagliato, 0, $spazio) : $tagliato, " ,;:") . '...';
+}
+
+/**
  * Un "monitoraggio cieco" annunciato da solo lascia credere che sotto non ci
  * fosse niente. Se invece la telemetria si e' spenta mentre un allarme era in
  * corso, la mail deve dirlo: l'ultima cosa vista resta la cosa piu' probabile,
@@ -281,7 +366,7 @@ function notaAllarmeSotto(string $condition, array $memoria): string
 {
     if (!in_array($condition, CIECHE, true) || !isset($memoria['imp_status'])) return '';
     $nomi = [
-        'offgrid' => 'sistema in isola (rete assente)',
+        'offgrid' => 'sistema in isola, senza rete',
         'soc'     => 'batteria quasi scarica',
         'stale'   => 'Powerwall senza telemetria',
     ];

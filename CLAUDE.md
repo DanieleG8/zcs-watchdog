@@ -106,6 +106,13 @@ introdotte.
   Tesla, la notte del 16/09, ha riazzerato un'isola in corso da quindici ore.
   E' la stessa idea della notte: **l'assenza di misura non e' una misura.**
 
+- **Un errore tecnico si racconta, non si incolla.** `spiegaErrore()` (in
+  tutti e due gli script) trasforma un fallimento HTTP in una frase, e tiene il
+  dettaglio su una riga sola, ripulita. Nella mail non ci vanno corpi di
+  risposta grezzi: il 16/09 ne e' arrivata una con l'HTML dentro il JSON,
+  troncato a meta' parola e ripetuto due volte. **Chi riceve questi avvisi sa
+  dove sta il quadro elettrico, non cosa sia un 503.**
+
 ## Il repository e' pubblico
 
 Chiunque legge il codice, la cronologia e **i log dei workflow**. I segreti
@@ -147,3 +154,21 @@ restano cifrati e mascherati, ma tutto il resto e' in chiaro. Quindi:
   quella buona.
 - **Un secret di una sola lettera maschera quella lettera in tutti i log** del
   repo (`e***it 0`). Mai usare segnaposto corti.
+
+## Quello che ancora non si sa
+
+- **Perche' l'inverter smetta di trasmettere al tramonto.** Il silenzio segue
+  il sole (ultimo campione pochi minuti dopo il tramonto, primo poco dopo
+  l'alba), ma questo non distingue l'inverter che si ferma dal portale che
+  smette di registrare, e chi ha l'impianto dice che la sera non si spegne.
+  La decisione (`notte`) non dipende dalla risposta, ma la risposta serve lo
+  stesso: se un giorno l'inverter morisse davvero alle 19:40, oggi non lo
+  distingueremmo dal normale.
+
+  Il watchdog sta raccogliendo la prova da solo: nel ramo `notte` scrive nel
+  log l'intero nodo ZCS **una volta all'ora**, passato da `nodoPerLog()` che
+  omette gli identificativi (il log e' pubblico: vedi sopra). Basta leggere un
+  paio di notti e confrontare le righe. Se nulla cambia mai, non arriva piu'
+  niente; se qualche campo si muove, l'inverter parla e il problema e' come
+  leggiamo `lastUpdate`. **Finche' non e' deciso, non scrivere una causa nella
+  documentazione** - e' gia' successo una volta.

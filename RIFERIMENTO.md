@@ -109,6 +109,26 @@ il dettaglio con i numeri del momento e chiude con da quanto dura l'anomalia.
   Il verdetto negativo del giorno attraversa la notte e si azzera solo se il
   contatore riparte da capo, cioe' se l'inverter e' stato sostituito.
 
+  **Perche' l'inverter taccia non si sa ancora, e si sta misurando.** Il
+  silenzio e' agganciato al sole, ma questo non distingue "l'inverter smette di
+  trasmettere" da "il portale smette di registrare" — e chi ha l'impianto dice
+  che la sera non si spegne. Da vedere c'e' solo l'intero nodo ZCS a notte
+  fonda, quindi il watchdog lo scrive da se' nel log: **una riga all'ora fra il
+  tramonto e l'alba**, con gli identificativi omessi perche' quel log e'
+  pubblico. Se qualche campo cambia di ora in ora, l'inverter sta ancora
+  parlando; se il nodo e' identico riga dopo riga, non arriva piu' niente.
+
+- **Un errore tecnico si racconta, non si incolla.** Quando l'API risponde male,
+  la mail porta una frase in italiano ("I server di Tesla non rispondono
+  (errore 503). Non e' un guasto dell'impianto") e poi, su una riga sola, il
+  dettaglio ripulito: niente HTML, niente escape `\u003e`, niente a capo, e il
+  taglio cade su una parola intera.
+
+  La mail del 16/09 portava invece il corpo grezzo della risposta troncato a
+  meta' parola, HTML annidato dentro il JSON, ripetuto due volte. Chi riceve
+  questi avvisi sa dove sta il quadro elettrico: da quella riga non ricavava
+  niente, e una mail che non si capisce vale zero anche quando ha ragione.
+
 - **Non vedere non e' un verdetto: mentre non si vede, l'ultima cosa vista
   resta.** Le condizioni `unreachable` (API muta) e `auth` (token non valido)
   dicono qualcosa del monitoraggio, non della batteria. Se scattano mentre un
