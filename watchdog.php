@@ -265,12 +265,20 @@ function evaluateProduction(array $node, int $now, array $state, array $cfg): ar
     $prodBadPrec = (bool) ($state['prod_bad'] ?? false);
     $isDay = isDaytime($now, $cfg['lat'], $cfg['lon'], $cfg['day_margin_min']);
 
-    // DI NOTTE NON SI GIUDICA. Questo inverter tace dal tramonto all'alba: il
-    // datalogger vive sul lato DC e al buio si spegne. Due notti di fila ha
-    // prodotto una mail "INVERTER OFFLINE" a mezzanotte e un "rientro" alle
-    // 07:20, senza che ci fosse niente da fare ne' l'una ne' l'altra volta.
-    // Al buio l'impianto non produce comunque: una segnalazione che sveglia e
-    // non si puo' agire insegna solo a ignorare le mail.
+    // DI NOTTE NON SI GIUDICA. Questo inverter smette di trasmettere a ridosso
+    // del tramonto e riprende dopo l'alba: il 15 e il 16/09 l'ultimo dato e'
+    // arrivato alle 19:40 (tramonto 19:35) e il primo alle 07:18 (alba 07:02).
+    // Perche' lo faccia non si sa da fuori, e non serve saperlo: il silenzio
+    // segue il sole, e tanto basta. Due notti di fila il watchdog ha spedito
+    // "INVERTER OFFLINE" a mezzanotte e un "rientro" alle 07:20, senza che ci
+    // fosse niente da fare ne' l'una ne' l'altra volta. Al buio l'impianto non
+    // produce comunque: una segnalazione che sveglia e alla quale non si puo'
+    // rispondere insegna solo a ignorare le mail.
+    //
+    // La finestra la decide il calcolo di alba e tramonto, non il silenzio: il
+    // margine di DAY_MARGIN_MIN la stringe da tutte e due le parti, cosi' il
+    // giudizio si chiude prima che l'inverter taccia e riapre dopo che ha
+    // ripreso.
     //
     // 'notte' non e' un verdetto: e' l'assenza di verdetto. Chi la riceve
     // conserva lo stato di prima - allarme aperto compreso - senza notificare

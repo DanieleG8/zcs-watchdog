@@ -97,10 +97,12 @@ il dettaglio con i numeri del momento e chiude con da quanto dura l'anomalia.
   annunciato nessun rientro. All'alba si torna a misurare.
 
   Nasce da un caso vero. Le notti del 14→15 e 15→16/09 l'inverter ha smesso di
-  trasmettere alle 19:40 ed e' tornato alle 07:18: il datalogger vive sul lato
-  DC e al buio si spegne. Il watchdog ha spedito "INVERTER OFFLINE" a mezzanotte
-  e un rientro alle 07:20, due notti di fila, senza che ci fosse nulla da fare
-  ne' l'una ne' l'altra volta. Al buio l'impianto non produce comunque: una mail
+  trasmettere alle 19:40 ed e' tornato alle 07:18. Quelle ore coincidono con il
+  sole: tramonto 19:35, alba 07:02. **Perche'** l'inverter taccia non risulta da
+  nessuna misura e qui non si tira a indovinare; quello che si sa e' che il
+  silenzio segue il tramonto, e per decidere basta. Il watchdog ha spedito
+  "INVERTER OFFLINE" a mezzanotte e un rientro alle 07:20, due notti di fila,
+  senza che ci fosse nulla da fare ne' l'una ne' l'altra volta. Al buio l'impianto non produce comunque: una mail
   che sveglia e alla quale non si puo' rispondere insegna solo a ignorare le
   mail. **Lo stesso silenzio di giorno resta STALE**, perche' li' si interviene.
 
