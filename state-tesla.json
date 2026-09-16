@@ -1,9 +1,9 @@
 {
-    "status": "offgrid",
-    "since": 1789536044,
-    "last_notified": 1789553637,
-    "last_ok": 1789467687,
+    "status": "ok",
+    "since": 1789570860,
+    "last_notified": 0,
+    "last_ok": 1789570860,
     "hb": "2026-09-16",
-    "riepilogo": "Sistema in isola (island_status: off_grid_unintentional, grid_status: Inactive). Carica 7%, batteria 0 W, casa 6467 W, rete 6467 W, solare 0 W. ATTENZIONE, le misure di flusso non sono coerenti (il valore della rete ripete esattamente quello della casa; batteria e solare a zero mentre la casa risulta assorbire: quei watt non li fornisce nessuno): non usarle per dedurre lo stato della rete, guarda il contatore o l'app Tesla.",
-    "riepilogo_ts": 1789553637
+    "riepilogo": "Carica 97%, batteria -2680 W, casa 16288 W, rete -7873 W, solare 26841 W.",
+    "riepilogo_ts": 1789570860
 }
