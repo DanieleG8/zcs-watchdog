@@ -76,11 +76,26 @@ introdotte.
 
 - **Di notte il watchdog fotovoltaico sospende il giudizio.** La condizione
   `notte` non e' un verdetto: conserva lo stato precedente, non notifica e non
-  annuncia rientri. Serve perche' questo inverter tace dal tramonto all'alba
-  (datalogger sul lato DC) e per due notti ha prodotto una mail a mezzanotte e
+  annuncia rientri. Serve perche' questo inverter smette di trasmettere a
+  ridosso del tramonto (15 e 16/09: ultimo dato 19:40, tramonto 19:35; primo
+  dato 07:18, alba 07:02) e per due notti ha prodotto una mail a mezzanotte e
   un rientro all'alba, senza che ci fosse niente da fare. Di giorno lo stesso
   silenzio resta STALE. Non "semplificare" rimettendo `ok` al posto di `notte`:
   un `ok` notturno chiude gli allarmi aperti e spedisce rientri falsi.
+
+  **La finestra la decide il calcolo di alba e tramonto, non il silenzio.**
+  `isDaytime()` stringe la giornata di `DAY_MARGIN_MIN` da tutte e due le parti,
+  quindi il giudizio si chiude prima che l'inverter taccia e riapre dopo che ha
+  ripreso. Non legare la sospensione all'assenza di dati: sarebbe circolare, e
+  un inverter davvero guasto si auto-assolverebbe tacendo.
+
+  E non scrivere **perche'** l'inverter tace, se non lo si e' verificato. Qui
+  c'era scritto "il datalogger vive sul lato DC e al buio si spegne": era una
+  supposizione mia spacciata per causa, e il proprietario dell'impianto ha fatto
+  notare che l'inverter la sera non si spegne affatto. La decisione non
+  dipendeva da quella spiegazione, ma la documentazione la leggeva come un fatto
+  accertato. **Cio' che e' osservato e cio' che e' dedotto vanno tenuti
+  separati, anche quando la conclusione non cambia.**
 
 - **Non vedere non e' un verdetto.** `unreachable` e `auth` (in `tesla.php`,
   costante `CIECHE`) dicono che il monitoraggio e' cieco, non che l'impianto

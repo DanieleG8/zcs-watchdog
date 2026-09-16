@@ -167,9 +167,10 @@ echo "\nLE DUE NOTTI DEL 14-16/09: l inverter dorme, il watchdog no\n";
 
 // Ultimo dato alle 19:40, poi silenzio fino alle 07:18. Due notti di fila il
 // watchdog ha spedito "INVERTER OFFLINE" a mezzanotte e un rientro alle 07:20.
-// Il datalogger di questo inverter vive sul lato DC: al buio si spegne. Al buio
-// l'impianto non produce comunque, e una mail che sveglia alle 00:15 senza che
-// ci sia niente da fare insegna solo a ignorare le mail.
+// Il silenzio segue il sole: tramonto 19:35, alba 07:02. Il motivo per cui
+// l'inverter smette di trasmettere non e' accertato e non serve accertarlo.
+// Al buio l'impianto non produce comunque, e una mail che sveglia alle 00:15
+// senza che ci sia niente da fare insegna solo a ignorare le mail.
 $muto = gmdate('Y-m-d\TH:i:s\Z', $notte - 6 * 3600);   // tace da sei ore
 
 list($c, $d, $s) = evaluateProduction(nodo(218529.9, 0, $notte, $muto), $notte,
@@ -188,6 +189,15 @@ list($c, $d, $s) = evaluateProduction(nodo(218529.9, 0, $notte, $muto), $notte,
     finestra(218529.9, 300, true, $notte), $cfg);
 check('notte con guasto aperto -> nessun verdetto', 'notte', $c);
 check('  e il guasto resta in memoria fino all alba', true, $s['prod_bad']);
+
+// LA FINESTRA LA DECIDE IL SOLE, NON IL SILENZIO.
+// Legare la sospensione all'assenza di dati sarebbe circolare: un inverter
+// davvero guasto si auto-assolverebbe tacendo. Qui il dato e' freschissimo e
+// siamo comunque di notte, perche' a deciderlo e' il calcolo di alba/tramonto.
+list($c, $d) = evaluateProduction(nodo(218529.9, 0, $notte, gmdate('Y-m-d\TH:i:s\Z', $notte - 60)),
+    $notte, finestra(218529.9, 300, false, $notte), $cfg);
+check('di notte anche con dato fresco -> notte (decide il sole)', 'notte', $c);
+check('  e il messaggio non parla di silenzio', false, str_contains($d, 'in silenzio'));
 
 echo "\ntestoRientro — un rientro dice da cosa si rientra\n";
 
