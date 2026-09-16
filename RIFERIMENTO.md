@@ -79,7 +79,7 @@ il dettaglio con i numeri del momento e chiude con da quanto dura l'anomalia.
 | **POWERWALL QUASI SCARICO** | carica sotto la soglia minima. **Oggi spento** (`TESLA_SOC_MIN_PERCENT` = 0) | subito |
 | **TOKEN TESLA NON VALIDO (monitoraggio fermo)** | la catena dei refresh token si e' rotta: il monitoraggio della batteria e' fermo, va rifatta l'autorizzazione | subito |
 | **TOKEN TESLA DA RINNOVARE** | Tesla ha ruotato il token ma non e' stato possibile risalvarlo nel secret (PAT scaduto o senza permesso *Secrets: write*). **Hai poche ore** prima che il monitoraggio si fermi | subito |
-| **MONITORAGGIO CIECO (Fleet API non raggiungibile)** | la Fleet API non risponde | 30 min |
+| **MONITORAGGIO CIECO (Fleet API non raggiungibile)** | la Fleet API non risponde. Se la telemetria si e' spenta mentre un allarme era in corso, la mail lo nomina: non e' rientrato, semplicemente non si vede piu' | 90 min |
 | **RIENTRO** | il Powerwall e' tornato normale | subito |
 | **TEST** | solo se la lanci a mano | — |
 
@@ -106,6 +106,23 @@ il dettaglio con i numeri del momento e chiude con da quanto dura l'anomalia.
 
   Il verdetto negativo del giorno attraversa la notte e si azzera solo se il
   contatore riparte da capo, cioe' se l'inverter e' stato sostituito.
+
+- **Non vedere non e' un verdetto: mentre non si vede, l'ultima cosa vista
+  resta.** Le condizioni `unreachable` (API muta) e `auth` (token non valido)
+  dicono qualcosa del monitoraggio, non della batteria. Se scattano mentre un
+  allarme d'impianto e' aperto, quell'allarme non viene cancellato: viene messo
+  da parte con la sua data di inizio e le mail gia' spedite, e ritrovato tale e
+  quale quando la telemetria torna.
+
+  Nasce anche questa da un caso vero. La notte del 16/09 il gateway di Tesla ha
+  alternato 504, 424 e 503 per mezz'ora, nel mezzo di un'isola iniziata il
+  giorno prima alle 14:40. Alle 03:12 e' partita una mail per un disservizio
+  che non era dell'impianto — da qui i 90 minuti di pazienza invece di 30 — e
+  alle 05:20, tornata la telemetria, l'isola e' ripartita da zero: la mail
+  successiva l'avrebbe annunciata come nuova, "in corso da 0 min", invece che
+  da quindici ore. C'era anche un silenzio possibile: se l'isola fosse finita
+  durante il buco, il RIENTRO non sarebbe partito, perche' si guardava solo la
+  notifica della cecita'. Ora si guarda quella dell'allarme rimasto sotto.
 
 ---
 
@@ -201,7 +218,7 @@ Sono tutte Variables del repo: si cambiano senza toccare il codice.
 |----------|--------|-------------|
 | `TESLA_STALE_LIMIT_MIN` | 60 (default) | minuti senza telemetria |
 | `TESLA_OFFGRID_PERSIST_MIN` | 15 (default) | minuti in isola prima di avvisare |
-| `TESLA_UNREACH_PERSIST_MIN` | 30 (default) | minuti di Fleet API muta |
+| `TESLA_UNREACH_PERSIST_MIN` | 90 (default) | minuti di Fleet API muta |
 | `TESLA_SOC_MIN_PERCENT` | 0 (default) | soglia carica — **0 = controllo spento** |
 | `TESLA_LOOP_INTERVAL_SEC` | 600 (default) | secondi fra un controllo e il successivo |
 

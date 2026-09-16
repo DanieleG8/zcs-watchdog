@@ -289,5 +289,98 @@ check('  con l intestazione', true, str_contains($q, 'Situazione rilevata'));
 
 check('leggiStato su file inesistente -> array vuoto', [], leggiStato('/tmp/non-esiste-davvero.json'));
 
+
+/* ==========================================================================
+ * LA NOTTE DEL 16/09: il cloud di Tesla si spegne in mezzo a un'isola
+ *
+ * Dati veri, dal log del run 915. Alle 00:42 UTC il gateway di Tesla comincia
+ * a rispondere 504, poi 424, poi 503; va avanti mezz'ora e alle 03:12 ora
+ * locale parte una mail "MONITORAGGIO CIECO". Alle 05:20 la telemetria torna,
+ * e l'isola c'e' ancora: era iniziata il 15/09 alle 14:40.
+ *
+ * Due cose sono andate storte. La mail per mezz'ora di disservizio altrui, di
+ * notte, e' rumore. E soprattutto: al ritorno l'isola e' ripartita da zero,
+ * perche' 'since' e 'last_notified' erano stati sovrascritti dalla cecita'.
+ * La mail successiva avrebbe annunciato come nuova un'anomalia di quindici ore.
+ *
+ * Non vedere non e' un verdetto: mentre non si vede, l'ultima cosa vista resta.
+ * ========================================================================== */
+echo "\nLa notte del 16/09: la cecita' non cancella l'isola\n";
+
+$isolaDa = 1789480800;          // 15/09 14:40 (finto, ma della forma giusta)
+$notificataAlle = 1789498983;   // 15/09 19:43
+$buio    = 1789520539;          // 16/09 01:42, il primo 504
+$ritorno = 1789536044;          // 16/09 05:20, la telemetria torna
+
+$inIsola = ['status' => 'offgrid', 'since' => $isolaDa,
+            'last_notified' => $notificataAlle, 'last_ok' => 1789467687];
+
+// 1. Cade la telemetria: l'isola va messa da parte, non buttata.
+$c = continuitaAllarme($inIsola, 'unreachable', $buio);
+check('cecita su isola -> ricomincia a contare la cecita', $buio, $c['since']);
+check('  la cecita non eredita le notifiche dell isola', 0, $c['last_notified']);
+check('  ma l isola resta in memoria', 'offgrid', $c['memoria']['imp_status'] ?? null);
+check('  con la sua data vera', $isolaDa, $c['memoria']['imp_since'] ?? null);
+check('  e con la mail gia mandata', $notificataAlle, $c['memoria']['imp_last_notified'] ?? null);
+
+// 2. La cecita' dura. La memoria non si perde di giro in giro.
+$cieco = ['status' => 'unreachable', 'since' => $buio, 'last_notified' => 0,
+          'imp_status' => 'offgrid', 'imp_since' => $isolaDa,
+          'imp_last_notified' => $notificataAlle];
+$c = continuitaAllarme($cieco, 'unreachable', $buio + 1800);
+check('cecita che persiste -> conta dal primo errore', $buio, $c['since']);
+check('  e si porta ancora dietro l isola', $isolaDa, $c['memoria']['imp_since'] ?? null);
+
+// 3. LA CORREZIONE. La telemetria torna, l'isola c'e' ancora: prosegue.
+$c = continuitaAllarme($cieco, 'offgrid', $ritorno);
+check('IL CASO: isola ritrovata -> riprende dalla data vera', $isolaDa, $c['since']);
+check('  e NON e una nuova anomalia da adesso', false, $c['since'] === $ritorno);
+check('  la mail gia mandata conta ancora (niente doppione)', $notificataAlle, $c['last_notified']);
+check('  e il log lo dichiara', true, $c['ripreso']);
+check('  fuori dalla cecita nessuna memoria da tenere', [], $c['memoria']);
+
+// 4. Se invece al ritorno l'impianto sta facendo altro, quello e' nuovo davvero.
+$c = continuitaAllarme($cieco, 'soc', $ritorno);
+check('al ritorno una condizione diversa -> allarme nuovo', $ritorno, $c['since']);
+check('  e da notificare', 0, $c['last_notified']);
+
+// 5. L'isola finisce mentre non si vedeva: il rientro va detto lo stesso.
+//    Prima si guardava solo 'last_notified', che durante la cecita' e' 0:
+//    l'isola sarebbe finita senza che nessuno lo sapesse.
+list($daCosa, $notificato) = rientroDa($cieco);
+check('rientro dopo cecita -> nomina l allarme vero', 'offgrid', $daCosa);
+check('  e sa che era stato notificato', true, $notificato);
+
+// Una cecita' mai notificata, senza niente sotto, non merita un rientro.
+list($daCosa, $notificato) = rientroDa(['status' => 'unreachable', 'since' => $buio, 'last_notified' => 0]);
+check('cecita sola e muta -> nessun rientro da annunciare', false, $notificato);
+check('  e il nome resta il suo', 'unreachable', $daCosa);
+
+// Il caso normale non cambia: allarme visto, notificato, poi rientrato.
+list($daCosa, $notificato) = rientroDa(['status' => 'offgrid', 'since' => $isolaDa,
+                                        'last_notified' => $notificataAlle]);
+check('rientro normale -> invariato', 'offgrid', $daCosa);
+check('  e va annunciato', true, $notificato);
+
+echo "\nLa mail di cecita dice cosa c era sotto\n";
+
+$nota = notaAllarmeSotto('unreachable', ['imp_status' => 'offgrid', 'imp_since' => $isolaDa,
+                                         'imp_last_notified' => $notificataAlle]);
+check('nomina l allarme rimasto scoperto', true, str_contains($nota, 'sistema in isola'));
+check('  dice che non e rientrato', true, str_contains($nota, "Non e' rientrato"));
+check('  e da quando dura', true, str_contains($nota, date('Y-m-d H:i', $isolaDa)));
+check('senza niente sotto non inventa nulla', '', notaAllarmeSotto('unreachable', []));
+check('e su un allarme vero non c entra', '',
+    notaAllarmeSotto('offgrid', ['imp_status' => 'soc', 'imp_since' => $isolaDa]));
+
+echo "\nLa pazienza sulla cecita e quella dichiarata\n";
+// Mezz'ora di 503 altrui, di notte, non e' un guasto: e' un singhiozzo.
+check('il predefinito di TESLA_UNREACH_PERSIST_MIN e 90 min', '90',
+    preg_match("/TESLA_UNREACH_PERSIST_MIN',\s*'(\d+)'/", file_get_contents(__DIR__ . '/../tesla.php'), $m)
+        ? $m[1] : null);
+check('unreachable e auth sono le condizioni cieche', ['unreachable', 'auth'], CIECHE);
+check('offgrid, soc e stale sono verdetti sull impianto', ['offgrid', 'soc', 'stale'], IMPIANTO);
+
+
 echo "\n" . ($fails === 0 ? "Tutte le prove sono passate.\n" : "$fails prove fallite.\n");
 exit($fails === 0 ? 0 : 1);
