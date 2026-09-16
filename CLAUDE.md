@@ -74,6 +74,14 @@ introdotte.
   Quando i flussi si contraddicono il messaggio lo dichiara; la condizione la
   decide `island_status`. **Su dati incoerenti un watchdog parla, non tace.**
 
+- **Di notte il watchdog fotovoltaico sospende il giudizio.** La condizione
+  `notte` non e' un verdetto: conserva lo stato precedente, non notifica e non
+  annuncia rientri. Serve perche' questo inverter tace dal tramonto all'alba
+  (datalogger sul lato DC) e per due notti ha prodotto una mail a mezzanotte e
+  un rientro all'alba, senza che ci fosse niente da fare. Di giorno lo stesso
+  silenzio resta STALE. Non "semplificare" rimettendo `ok` al posto di `notte`:
+  un `ok` notturno chiude gli allarmi aperti e spedisce rientri falsi.
+
 ## Il repository e' pubblico
 
 Chiunque legge il codice, la cronologia e **i log dei workflow**. I segreti

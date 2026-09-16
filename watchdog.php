@@ -133,6 +133,22 @@ if (!$ok) {
 
 $MISURA = ['status' => $condition, 'riepilogo' => $detail, 'riepilogo_ts' => $now];
 
+/* 1-bis. Notte: nessun verdetto, quindi nessuna notifica e nessun rientro.
+   Lo stato precedente resta com'e', allarme aperto compreso: al buio non si
+   scopre niente di nuovo e non si risolve niente. */
+if ($condition === 'notte') {
+    $prevNotte = $state['status'] ?? 'ok';
+    logline("NOTTE (stato '$prevNotte' conservato). $detail");
+    saveState([
+        'status'        => $prevNotte,
+        'since'         => $state['since'] ?? $now,
+        'last_notified' => $state['last_notified'] ?? 0,
+        'last_ok'       => $state['last_ok'] ?? 0,
+        'hb'            => date('Y-m-d'),
+    ] + $energy);
+    exit(0);
+}
+
 /* 2. Stato + anti-spam */
 $persistMin = [
     'zero'        => 0,   // l'attesa e' gia' dentro la finestra di misura
@@ -247,6 +263,31 @@ function evaluateProduction(array $node, int $now, array $state, array $cfg): ar
     // che ha ripreso a produrre. Azzerarlo qui faceva dimenticare l'allarme
     // produzione appena calava il buio.
     $prodBadPrec = (bool) ($state['prod_bad'] ?? false);
+    $isDay = isDaytime($now, $cfg['lat'], $cfg['lon'], $cfg['day_margin_min']);
+
+    // DI NOTTE NON SI GIUDICA. Questo inverter tace dal tramonto all'alba: il
+    // datalogger vive sul lato DC e al buio si spegne. Due notti di fila ha
+    // prodotto una mail "INVERTER OFFLINE" a mezzanotte e un "rientro" alle
+    // 07:20, senza che ci fosse niente da fare ne' l'una ne' l'altra volta.
+    // Al buio l'impianto non produce comunque: una segnalazione che sveglia e
+    // non si puo' agire insegna solo a ignorare le mail.
+    //
+    // 'notte' non e' un verdetto: e' l'assenza di verdetto. Chi la riceve
+    // conserva lo stato di prima - allarme aperto compreso - senza notificare
+    // e senza annunciare rientri. All'alba si torna a misurare, e se l'inverter
+    // e' ancora muto allora si', quello e' un guasto da raccontare.
+    if (!$isDay) {
+        $etotOra = isset($node['energyGeneratingTotal']) ? (float) $node['energyGeneratingTotal'] : null;
+        $testo = $ageMin > $cfg['stale_limit_min']
+            ? sprintf('Notte: inverter in silenzio da %.0f min (ultimo dato %s). Normale al buio, '
+                . 'si rivaluta all\'alba.', $ageMin, $quando)
+            : sprintf('Notte: nessuna produzione attesa. Potenza %.0f W. Ultimo dato %s.', $powerW, $quando);
+        return ['notte', $testo, [
+            'etot_ref' => $etotOra ?? ($state['etot_ref'] ?? null),
+            'ref_ts'   => $now,          // la finestra resta ancorata al presente
+            'prod_bad' => $prodBadPrec,  // il verdetto del giorno sopravvive alla notte
+        ]];
+    }
 
     if ($ageMin > $cfg['stale_limit_min']) {
         return ['stale', sprintf('Ultimo dato %s (%.0f min fa).',
@@ -254,7 +295,6 @@ function evaluateProduction(array $node, int $now, array $state, array $cfg): ar
             ['etot_ref' => $state['etot_ref'] ?? null, 'ref_ts' => $now, 'prod_bad' => $prodBadPrec]];
     }
 
-    $isDay = isDaytime($now, $cfg['lat'], $cfg['lon'], $cfg['day_margin_min']);
     $etot  = isset($node['energyGeneratingTotal']) ? (float) $node['energyGeneratingTotal'] : null;
 
     // Senza contatore non si puo' misurare nulla: si torna al vecchio criterio
@@ -282,13 +322,10 @@ function evaluateProduction(array $node, int $now, array $state, array $cfg): ar
             ['etot_ref' => $etot, 'ref_ts' => $now, 'prod_bad' => false]];
     }
 
-    // Di notte la finestra resta ferma al presente, ma il verdetto sulla
-    // produzione NON si azzera: al buio non si misura niente, e "non misurabile"
-    // non vuol dire "risolto". Il primo giro senza stato invece parte pulito.
-    if (!$isDay || $ref === null || $refTs === 0) {
-        $primoGiro = ($ref === null || $refTs === 0);
+    // Primo giro senza stato: non c'e' finestra da confrontare, si parte pulito.
+    if ($ref === null || $refTs === 0) {
         return ['ok', sprintf('Potenza %.0f W. Totale %.1f kWh. Ultimo dato %s.', $powerW, $etot, $quando),
-            ['etot_ref' => $etot, 'ref_ts' => $now, 'prod_bad' => $primoGiro ? false : $prodBadPrec]];
+            ['etot_ref' => $etot, 'ref_ts' => $now, 'prod_bad' => false]];
     }
 
     $minuti   = ($now - $refTs) / 60;

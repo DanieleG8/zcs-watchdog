@@ -65,7 +65,7 @@ il dettaglio con i numeri del momento e chiude con da quanto dura l'anomalia.
 |---------|------------------|-------------------|
 | **NESSUNA PRODUZIONE** | nella finestra di misura e' entrata meno energia di quella che la soglia richiede: l'impianto non sta producendo (o produce un filo di corrente) | subito a fine finestra: l'attesa e' gia' dentro i 60 min di misura |
 | **NESSUNA PRODUZIONE (contatore non disponibile)** | l'API non ha restituito il contatore di energia, si giudica sulla sola potenza istantanea | 90 min di persistenza |
-| **INVERTER OFFLINE (nessun dato)** | il `lastUpdate` dell'inverter e' fermo da troppo: l'inverter non parla piu' col portale | 60 min |
+| **INVERTER OFFLINE (nessun dato)** | **di giorno** il `lastUpdate` e' fermo da troppo: l'inverter non parla piu' col portale. Di notte il silenzio non e' un allarme (vedi sotto) | 60 min |
 | **MONITORAGGIO CIECO (API non raggiungibile)** | l'API ZCS non risponde, o risponde senza dati validi. Non sai nulla dell'impianto | 30 min |
 | **RIENTRO** | si e' chiusa una delle anomalie sopra. Il testo dice **quale**: "Impianto tornato a produrre" solo se la produzione e' stata misurata, altrimenti "Inverter tornato a trasmettere" con l'avvertenza che la produzione non e' verificata (o che l'ultima misura era negativa) | subito |
 | **TEST** | solo se la lanci a mano (`mode: test`) | — |
@@ -90,11 +90,22 @@ il dettaglio con i numeri del momento e chiude con da quanto dura l'anomalia.
 - **Niente rientri fantasma**: il RIENTRO parte solo se l'allarme corrispondente
   era stato davvero spedito. Un guasto risolto prima della soglia di persistenza
   non genera ne' allarme ne' "tutto risolto".
-- **La notte non chiude un allarme di produzione.** Al buio non si misura niente,
-  e "non misurabile" non vuol dire "risolto": il verdetto negativo sopravvive
-  fino alla mattina dopo, cosi' un impianto ancora fermo torna in allarme appena
-  si apre la finestra diurna invece di ripartire con la fedina pulita. Si azzera
-  solo se il contatore riparte da capo, cioe' se l'inverter e' stato sostituito.
+- **Di notte il fotovoltaico non produce verdetti, e quindi nemmeno mail.**
+  Fra tramonto e alba (piu' il margine di `DAY_MARGIN_MIN`) la condizione e'
+  `notte`, che non e' un giudizio ma la sua assenza: lo stato precedente resta
+  com'e' — allarme aperto compreso — non parte nessuna notifica e non viene
+  annunciato nessun rientro. All'alba si torna a misurare.
+
+  Nasce da un caso vero. Le notti del 14→15 e 15→16/09 l'inverter ha smesso di
+  trasmettere alle 19:40 ed e' tornato alle 07:18: il datalogger vive sul lato
+  DC e al buio si spegne. Il watchdog ha spedito "INVERTER OFFLINE" a mezzanotte
+  e un rientro alle 07:20, due notti di fila, senza che ci fosse nulla da fare
+  ne' l'una ne' l'altra volta. Al buio l'impianto non produce comunque: una mail
+  che sveglia e alla quale non si puo' rispondere insegna solo a ignorare le
+  mail. **Lo stesso silenzio di giorno resta STALE**, perche' li' si interviene.
+
+  Il verdetto negativo del giorno attraversa la notte e si azzera solo se il
+  contatore riparte da capo, cioe' se l'inverter e' stato sostituito.
 
 ---
 

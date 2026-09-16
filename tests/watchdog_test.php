@@ -108,7 +108,7 @@ check('  e azzera il verdetto negativo', false, $s['prod_bad']);
 echo "\naltri casi\n";
 
 list($c, $d, $s) = evaluateProduction(nodo(218529.9, 0, $notte), $notte, finestra(218529.9, 600, false, $notte), $cfg);
-check('notte, nessuna produzione -> ok', 'ok', $c);
+check('notte, nessuna produzione -> notte (nessun verdetto)', 'notte', $c);
 check('  la finestra resta ancorata al presente (niente allarme all alba)', $notte, $s['ref_ts']);
 
 list($c, ) = evaluateProduction(nodo(218530.0, 5000, null, gmdate('Y-m-d\TH:i:s\Z', $giorno - 7200)), $giorno, finestra(218530.0, 200), $cfg);
@@ -151,7 +151,7 @@ check('  ma il verdetto sulla produzione resta negativo', true, $s['prod_bad']);
 // 2. Nemmeno la notte lo cancella: al buio non si misura, e "non misurabile"
 //    non vuol dire "risolto".
 list($c, $d, $s) = evaluateProduction(nodo(218529.9, 0, $notte), $notte, finestra(218529.9, 300, true, $notte), $cfg);
-check('notte con allarme produzione in corso -> nessun allarme nuovo', 'ok', $c);
+check('notte con allarme produzione in corso -> nessun verdetto', 'notte', $c);
 check('  ma il verdetto negativo sopravvive fino all alba', true, $s['prod_bad']);
 check('  e la finestra riparte comunque dal presente', $notte, $s['ref_ts']);
 
@@ -162,6 +162,32 @@ check('contatore ripartito da capo -> verdetto azzerato', false, $s['prod_bad'])
 // 4. Primo giro senza stato: nessuna eredita' da conservare.
 list($c, $d, $s) = evaluateProduction(nodo(218530.0), $giorno, [], $cfg);
 check('primo giro senza stato -> verdetto pulito', false, $s['prod_bad']);
+
+echo "\nLE DUE NOTTI DEL 14-16/09: l inverter dorme, il watchdog no\n";
+
+// Ultimo dato alle 19:40, poi silenzio fino alle 07:18. Due notti di fila il
+// watchdog ha spedito "INVERTER OFFLINE" a mezzanotte e un rientro alle 07:20.
+// Il datalogger di questo inverter vive sul lato DC: al buio si spegne. Al buio
+// l'impianto non produce comunque, e una mail che sveglia alle 00:15 senza che
+// ci sia niente da fare insegna solo a ignorare le mail.
+$muto = gmdate('Y-m-d\TH:i:s\Z', $notte - 6 * 3600);   // tace da sei ore
+
+list($c, $d, $s) = evaluateProduction(nodo(218529.9, 0, $notte, $muto), $notte,
+    finestra(218529.9, 300, false, $notte), $cfg);
+check('IL CASO DELLE DUE NOTTI: inverter muto al buio -> notte, non stale', 'notte', $c);
+check('  il messaggio spiega che e normale', true, str_contains($d, 'Normale al buio'));
+check('  e dice quando si torna a guardare', true, str_contains($d, "all'alba"));
+
+// Lo stesso silenzio, ma di giorno, resta un guasto da raccontare.
+list($c, ) = evaluateProduction(nodo(218529.9, 0, $giorno, gmdate('Y-m-d\TH:i:s\Z', $giorno - 6 * 3600)),
+    $giorno, finestra(218529.9, 300, false), $cfg);
+check('lo stesso silenzio di giorno -> stale (li si interviene)', 'stale', $c);
+
+// La notte non chiude un allarme aperto: il verdetto attraversa il buio.
+list($c, $d, $s) = evaluateProduction(nodo(218529.9, 0, $notte, $muto), $notte,
+    finestra(218529.9, 300, true, $notte), $cfg);
+check('notte con guasto aperto -> nessun verdetto', 'notte', $c);
+check('  e il guasto resta in memoria fino all alba', true, $s['prod_bad']);
 
 echo "\ntestoRientro — un rientro dice da cosa si rientra\n";
 
