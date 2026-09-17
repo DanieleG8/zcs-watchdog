@@ -4,9 +4,10 @@
     "last_notified": 0,
     "last_ok": 1789657331,
     "hb": "2026-09-17",
+    "notte_dump": "2026-09-17 21",
     "etot_ref": 218856,
-    "ref_ts": 1789657331,
+    "ref_ts": 1789674852,
     "prod_bad": false,
-    "riepilogo": "Media 8370 W negli ultimi 300 min (soglia 1000 W). Potenza istantanea 0 W. Ultimo dato 17:00.",
-    "riepilogo_ts": 1789657331
+    "riepilogo": "Notte: inverter in silenzio da 146 min (ultimo dato 19:28). Normale al buio, si rivaluta all'alba.",
+    "riepilogo_ts": 1789674852
 }
