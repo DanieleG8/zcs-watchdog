@@ -59,6 +59,12 @@ $OFFGRID_PERSIST_MIN = (int) env('TESLA_OFFGRID_PERSIST_MIN', '15');
 // soltanto a non aprire le mail.
 $UNREACH_PERSIST_MIN = (int) env('TESLA_UNREACH_PERSIST_MIN', '90');
 $SOC_MIN_PERCENT     = (float) env('TESLA_SOC_MIN_PERCENT', '0'); // 0 = controllo disattivato
+
+// Stessa posizione usata dal watchdog fotovoltaico: serve a sapere se il sole
+// c'e'. Una batteria che si scarica di notte non e' un guasto, di giorno si'.
+$LAT            = (float) env('PLANT_LAT', '45.0');
+$LON            = (float) env('PLANT_LON', '9.0');
+$DAY_MARGIN_MIN = (int) env('DAY_MARGIN_MIN', '40');
 $RENOTIFY_HOURS      = (int) env('RENOTIFY_HOURS', '4');
 
 // Notifiche (stessi canali del watchdog fotovoltaico)
@@ -104,6 +110,7 @@ function main(array $argv): int
 {
     global $CLIENT_ID, $REFRESH_TOKEN, $SITE_ID, $REGION;
     global $STALE_LIMIT_MIN, $OFFGRID_PERSIST_MIN, $UNREACH_PERSIST_MIN, $SOC_MIN_PERCENT, $RENOTIFY_HOURS;
+    global $LAT, $LON, $DAY_MARGIN_MIN;
 
     $flag = $argv[1] ?? '';
 
@@ -189,9 +196,11 @@ function main(array $argv): int
     }
 
     // 3. Valutazione
-    list($condition, $detail) = evaluateCondition($live, time(), [
+    $adesso = time();
+    list($condition, $detail) = evaluateCondition($live, $adesso, [
         'stale_limit_min'  => $STALE_LIMIT_MIN,
         'soc_min_percent'  => $SOC_MIN_PERCENT,
+        'e_giorno'         => isDaytime($adesso, $LAT, $LON, $DAY_MARGIN_MIN),
     ]);
     return handleCondition($condition, $detail, $live);
 }
@@ -232,6 +241,30 @@ function notaFlussiIncoerenti(array $live): string
  * Traduce il live_status in una condizione. Separata dal resto per poterla
  * provare con risposte finte (vedi tests/tesla_test.php).
  */
+/**
+ * Una percentuale scritta senza mentire sull'arrotondamento.
+ *
+ * Con round() la mail del 16/09 diceva "Carica 20% sotto la soglia 20%", che
+ * letta cosi' non sta in piedi: la carica vera era 19,6%. Un avviso che sembra
+ * sbagliato viene trattato come sbagliato, anche quando ha ragione.
+ */
+function fmtPerc(?float $v): string
+{
+    if ($v === null) return 'n/d';
+    return rtrim(rtrim(sprintf('%.1f', $v), '0'), '.') . '%';
+}
+
+/** Copia di quella in watchdog.php: i due script restano indipendenti. */
+function isDaytime(int $now, float $lat, float $lon, int $marginMin): bool
+{
+    $info = date_sun_info($now, $lat, $lon);
+    $rise = $info['sunrise'] ?? null;
+    $set  = $info['sunset']  ?? null;
+    if (!$rise || !$set) return true;   // nel dubbio si giudica
+    $m = $marginMin * 60;
+    return ($now >= $rise + $m) && ($now <= $set - $m);
+}
+
 function evaluateCondition(array $live, int $now, array $cfg): array
 {
     $ts     = parseTimestamp($live['timestamp'] ?? null);
@@ -242,7 +275,7 @@ function evaluateCondition(array $live, int $now, array $cfg): array
 
     $riepilogo = sprintf(
         'Carica %s, batteria %s W, casa %s W, rete %s W, solare %s W.',
-        $soc === null ? 'n/d' : round($soc) . '%',
+        fmtPerc($soc),
         fmtW($live['battery_power'] ?? null),
         fmtW($live['load_power'] ?? null),
         fmtW($live['grid_power'] ?? null),
@@ -267,8 +300,22 @@ function evaluateCondition(array $live, int $now, array $cfg): array
     }
 
     if ($cfg['soc_min_percent'] > 0 && $soc !== null && $soc < $cfg['soc_min_percent']) {
-        return ['soc', sprintf('Carica %.0f%% sotto la soglia %.0f%%. %s',
-            $soc, $cfg['soc_min_percent'], $riepilogo)];
+        // DI NOTTE LA BATTERIA SI SCARICA: E' IL SUO MESTIERE.
+        // Senza sole non si ricarica, e la casa assorbe piu' di quanto lei
+        // contenga: arrivare al mattino in riserva e' il ciclo previsto, non
+        // un guasto. Va detto che qui siamo per forza CON LA RETE PRESENTE,
+        // perche' l'isola e' valutata prima e ha la precedenza: la casa non
+        // resta senza niente, la batteria vuota se la copre la rete.
+        // Di giorno lo stesso valore e' un'altra cosa - c'e' il sole e la
+        // carica non sale - e li' l'avviso parte.
+        if (!($cfg['e_giorno'] ?? true)) {
+            return ['notte', sprintf('Notte: carica %s sotto la soglia %s, ma senza sole e\' il '
+                . 'ciclo normale e la rete c\'e\'. Si rivaluta di giorno. %s',
+                fmtPerc($soc), fmtPerc((float) $cfg['soc_min_percent']), $riepilogo)];
+        }
+        return ['soc', sprintf('Carica %s sotto la soglia %s, con il sole gia\' alto: la batteria '
+            . 'non si sta ricaricando. %s',
+            fmtPerc($soc), fmtPerc((float) $cfg['soc_min_percent']), $riepilogo)];
     }
 
     return ['ok', $riepilogo];
@@ -377,6 +424,22 @@ function notaAllarmeSotto(string $condition, array $memoria): string
 }
 
 /**
+ * Le chiavi imp_* cosi' come stanno, se ci sono.
+ *
+ * saveState() riscrive il file per intero: un ramo che dimentica queste chiavi
+ * cancella la memoria di un allarme d'impianto messo da parte durante una
+ * cecita'. Il ramo notturno passa di qui appunto per non farlo.
+ */
+function memoriaConservata(array $state): array
+{
+    $fuori = [];
+    foreach (['imp_status', 'imp_since', 'imp_last_notified'] as $k) {
+        if (isset($state[$k])) $fuori[$k] = $state[$k];
+    }
+    return $fuori;
+}
+
+/**
  * Da cosa si rientra, e se di quel qualcosa era stata mandata una mail.
  *
  * Guardare solo 'last_notified' non basta: se l'ultima condizione era cieca,
@@ -455,6 +518,24 @@ function handleCondition(string $condition, string $detail, ?array $live): int
     $MISURA = ['status' => $condition, 'riepilogo' => $detail, 'riepilogo_ts' => $now];
     $prev  = $state['status'] ?? 'ok';
     $hb    = date('Y-m-d');
+
+    // NOTTE: nessun verdetto, quindi nessuna mail e nessun rientro.
+    // Lo stato di prima resta com'e'. Se un allarme SOC era gia' aperto di
+    // giorno non si chiude al tramonto - sarebbe un "tornato normale" falso,
+    // lo stesso errore gia' fatto sul fotovoltaico - e non ne parte uno nuovo
+    // per una scarica che ci si aspetta. All'alba si torna a giudicare.
+    if ($condition === 'notte') {
+        $prevNotte = $prev;
+        logline("NOTTE (stato '$prevNotte' conservato). $detail");
+        saveState([
+            'status'        => $prevNotte,
+            'since'         => $state['since'] ?? $now,
+            'last_notified' => $state['last_notified'] ?? 0,
+            'last_ok'       => $state['last_ok'] ?? 0,
+            'hb'            => $hb,
+        ] + memoriaConservata($state));
+        return 0;
+    }
 
     $persistMin = [
         'stale'       => 0,   // il timeout e' gia' dentro TESLA_STALE_LIMIT_MIN

@@ -76,7 +76,7 @@ il dettaglio con i numeri del momento e chiude con da quanto dura l'anomalia.
 |---------|------------------|-------------------|
 | **POWERWALL SENZA TELEMETRIA** | il Gateway non manda dati da oltre 60 min: sistema staccato, gateway guasto, o rete di casa giu' | subito (il timeout e' gia' la soglia) |
 | **POWERWALL IN ISOLA (rete assente)** | `island_status` fuori da `on_grid`: il sistema dichiara di non avere la rete. Se le misure di flusso si contraddicono, il messaggio lo segnala invece di zittire l'allarme | 15 min |
-| **POWERWALL QUASI SCARICO** | carica sotto la soglia minima. **Oggi spento** (`TESLA_SOC_MIN_PERCENT` = 0) | subito |
+| **POWERWALL QUASI SCARICO** | carica sotto `TESLA_SOC_MIN_PERCENT` **e sole gia' alto**: la batteria non si sta ricaricando. Di notte la stessa carica non genera nulla (vedi sotto) | subito |
 | **TOKEN TESLA NON VALIDO (monitoraggio fermo)** | la catena dei refresh token si e' rotta: il monitoraggio della batteria e' fermo, va rifatta l'autorizzazione | subito |
 | **TOKEN TESLA DA RINNOVARE** | Tesla ha ruotato il token ma non e' stato possibile risalvarlo nel secret (PAT scaduto o senza permesso *Secrets: write*). **Hai poche ore** prima che il monitoraggio si fermi | subito |
 | **MONITORAGGIO CIECO (Fleet API non raggiungibile)** | la Fleet API non risponde. Se la telemetria si e' spenta mentre un allarme era in corso, la mail lo nomina: non e' rientrato, semplicemente non si vede piu' | 90 min |
@@ -117,6 +117,31 @@ il dettaglio con i numeri del momento e chiude con da quanto dura l'anomalia.
   tramonto e l'alba**, con gli identificativi omessi perche' quel log e'
   pubblico. Se qualche campo cambia di ora in ora, l'inverter sta ancora
   parlando; se il nodo e' identico riga dopo riga, non arriva piu' niente.
+
+- **Di notte una batteria che si scarica non e' un allarme.** Sotto la soglia
+  `TESLA_SOC_MIN_PERCENT`, fra tramonto e alba, la condizione e' `notte`: lo
+  stato precedente resta com'e', non parte nessuna mail e non viene annunciato
+  nessun rientro. All'alba si torna a giudicare, e **di giorno la stessa carica
+  fa scattare l'avviso**, perche' col sole alto una batteria che non risale
+  vuol dire che qualcosa non la sta caricando.
+
+  Due fatti rendono la notte innocua. Senza sole la batteria non si ricarica e
+  la casa assorbe piu' di quanto lei contenga: arrivare al mattino in riserva
+  e' il ciclo previsto. E quando scatta `soc` **la rete c'e' per forza**, perche'
+  l'isola viene valutata prima e ha la precedenza — la casa non resta senza
+  niente, la batteria vuota se la copre la rete. Se invece la rete manca, e'
+  `POWERWALL IN ISOLA` a parlare, di notte come di giorno.
+
+  Nasce da un caso vero: la notte del 17/09 e' partita una
+  `POWERWALL QUASI SCARICO` alle 02:19 per una scarica perfettamente normale,
+  e con `RENOTIFY_HOURS` a 4 ore sarebbe tornata fino al mattino.
+
+- **Le percentuali non si arrotondano fino a mentire.** Quella stessa mail
+  diceva *"Carica 20% sotto la soglia 20%"*: la carica vera era 19,6% e
+  `round()` la faceva salire a 20 su tutti e due i lati del confronto. Un
+  avviso che sembra sbagliato viene trattato come sbagliato, anche quando ha
+  ragione. Ora `fmtPerc()` tiene il decimale quando serve (`19.6%`) e lo toglie
+  quando non serve (`20%`).
 
 - **Un errore tecnico si racconta, non si incolla.** Quando l'API risponde male,
   la mail porta una frase in italiano ("I server di Tesla non rispondono
@@ -241,7 +266,7 @@ Sono tutte Variables del repo: si cambiano senza toccare il codice.
 | `TESLA_STALE_LIMIT_MIN` | 60 (default) | minuti senza telemetria |
 | `TESLA_OFFGRID_PERSIST_MIN` | 15 (default) | minuti in isola prima di avvisare |
 | `TESLA_UNREACH_PERSIST_MIN` | 90 (default) | minuti di Fleet API muta |
-| `TESLA_SOC_MIN_PERCENT` | 0 (default) | soglia carica — **0 = controllo spento** |
+| `TESLA_SOC_MIN_PERCENT` | 0 (default) | soglia carica, controllata **solo di giorno** — **0 = controllo spento del tutto** |
 | `TESLA_LOOP_INTERVAL_SEC` | 600 (default) | secondi fra un controllo e il successivo |
 
 ---
