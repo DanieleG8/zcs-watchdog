@@ -106,6 +106,24 @@ introdotte.
   Tesla, la notte del 16/09, ha riazzerato un'isola in corso da quindici ore.
   E' la stessa idea della notte: **l'assenza di misura non e' una misura.**
 
+- **Di notte una batteria che si scarica non e' un allarme, di giorno si'.**
+  In `tesla.php` la condizione `notte` copre il solo caso `soc`, e conserva lo
+  stato precedente senza notificare ne' annunciare rientri (stesso schema del
+  fotovoltaico, stesso motivo: un `ok` notturno chiuderebbe un allarme aperto
+  di giorno con un "tornato normale" falso). Regge su due fatti, non su una
+  preferenza: senza sole la batteria non si ricarica e la casa assorbe piu' di
+  quanto lei contenga; e quando si arriva a valutare `soc` **la rete c'e' per
+  forza**, perche' `offgrid` e' valutato prima e ha la precedenza. Se la rete
+  manca, parla l'isola, di notte come di giorno. Non estendere `notte` alle
+  altre condizioni: `stale`, `offgrid`, `auth` e `unreachable` valgono al buio
+  esattamente come alla luce.
+
+- **Le percentuali non si arrotondano fino a mentire.** `fmtPerc()`, non
+  `round()`. La mail del 17/09 diceva "Carica 20% sotto la soglia 20%" per una
+  carica di 19,6%: **un avviso che sembra sbagliato viene trattato come
+  sbagliato**, ed e' un modo di perdere credibilita' senza aver sbagliato la
+  decisione.
+
 - **Un errore tecnico si racconta, non si incolla.** `spiegaErrore()` (in
   tutti e due gli script) trasforma un fallimento HTTP in una frase, e tiene il
   dettaglio su una riga sola, ripulita. Nella mail non ci vanno corpi di

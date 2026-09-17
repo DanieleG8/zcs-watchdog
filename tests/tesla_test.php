@@ -25,7 +25,7 @@ function check(string $titolo, $atteso, $ottenuto): void
 }
 
 $now = 1789369200; // 2026-09-14 09:00 Europe/Rome
-$cfg = ['stale_limit_min' => 60, 'soc_min_percent' => 0];
+$cfg = ['stale_limit_min' => 60, 'soc_min_percent' => 0, 'e_giorno' => true];
 
 function live(array $over = [], int $now = 1789369200): array
 {
@@ -45,7 +45,7 @@ echo "evaluateCondition\n";
 
 list($c, $d) = evaluateCondition(live(), $now, $cfg);
 check('sistema normale -> ok', 'ok', $c);
-check('riepilogo leggibile', 'Carica 63%, batteria -1500 W, casa 800 W, rete 0 W, solare 2300 W.', $d);
+check('riepilogo leggibile', 'Carica 62.5%, batteria -1500 W, casa 800 W, rete 0 W, solare 2300 W.', $d);
 
 list($c, ) = evaluateCondition(live(['timestamp' => date('c', $now - 3 * 3600)]), $now, $cfg);
 check('telemetria di 3 ore fa -> stale', 'stale', $c);
@@ -72,7 +72,7 @@ check('senza island_status si usa grid_status', 'offgrid', $c);
 list($c, ) = evaluateCondition(live(['island_status' => '', 'grid_status' => 'Active']), $now, $cfg);
 check('grid_status Active senza island_status -> ok', 'ok', $c);
 
-list($c, ) = evaluateCondition(live(['percentage_charged' => 3.0]), $now, ['stale_limit_min' => 60, 'soc_min_percent' => 5]);
+list($c, ) = evaluateCondition(live(['percentage_charged' => 3.0]), $now, ['stale_limit_min' => 60, 'soc_min_percent' => 5, 'e_giorno' => true]);
 check('carica 3% sotto soglia 5% -> soc', 'soc', $c);
 
 list($c, ) = evaluateCondition(live(['percentage_charged' => 3.0]), $now, $cfg);
@@ -81,7 +81,7 @@ check('controllo carica disattivato (soglia 0) -> ok', 'ok', $c);
 list($c, ) = evaluateCondition(
     live(['percentage_charged' => 3.0, 'island_status' => 'off_grid']),
     $now,
-    ['stale_limit_min' => 60, 'soc_min_percent' => 5]
+    ['stale_limit_min' => 60, 'soc_min_percent' => 5, 'e_giorno' => true]
 );
 check('isola ha la precedenza sulla carica bassa', 'offgrid', $c);
 
@@ -372,6 +372,75 @@ check('  e da quando dura', true, str_contains($nota, date('Y-m-d H:i', $isolaDa
 check('senza niente sotto non inventa nulla', '', notaAllarmeSotto('unreachable', []));
 check('e su un allarme vero non c entra', '',
     notaAllarmeSotto('offgrid', ['imp_status' => 'soc', 'imp_since' => $isolaDa]));
+
+echo "\nLA MAIL DELLA NOTTE DEL 17/09: la batteria si scarica, e va bene cosi\n";
+
+/* Arrivata alle 02:19: "POWERWALL QUASI SCARICO - Carica 20% sotto la soglia
+ * 20%", anomalia in corso dalle 21:05. Due cose sbagliate.
+ *
+ * La prima e' il testo: 20 non e' sotto 20. La carica vera era 19,6% e round()
+ * la faceva salire a 20 su tutti e due i lati del confronto. Un avviso che
+ * sembra sbagliato viene trattato come sbagliato, anche quando ha ragione.
+ *
+ * La seconda e' l'avviso stesso. Di notte il solare non carica e la casa
+ * assorbe piu' di quanto la batteria contenga: arrivare al mattino in riserva
+ * e' il ciclo previsto. E siamo per forza con la rete presente, perche'
+ * l'isola viene valutata prima e ha la precedenza: la casa non resta senza
+ * niente. Con RENOTIFY_HOURS a 4 ore quella mail tornava tutta la notte.
+ */
+$notteCfg  = ['stale_limit_min' => 60, 'soc_min_percent' => 20, 'e_giorno' => false];
+$giornoCfg = ['stale_limit_min' => 60, 'soc_min_percent' => 20, 'e_giorno' => true];
+$scarica   = ['percentage_charged' => 19.6, 'battery_power' => 0,
+              'load_power' => 2752, 'grid_power' => 2752, 'solar_power' => 0];
+
+list($c, $d) = evaluateCondition(live($scarica), $now, $notteCfg);
+check('IL CASO: batteria in riserva di notte -> nessun verdetto', 'notte', $c);
+check('  il messaggio dice che e il ciclo normale', true, str_contains($d, 'ciclo normale'));
+check('  e che la rete copre', true, str_contains($d, "la rete c'e'"));
+check('  e quando si torna a guardare', true, str_contains($d, 'Si rivaluta di giorno'));
+
+// Di giorno la stessa carica e' un'altra cosa: c'e' il sole e non sale.
+list($c, $d) = evaluateCondition(live($scarica), $now, $giornoCfg);
+check('la stessa carica di giorno -> allarme (li si interviene)', 'soc', $c);
+check('  e dice perche cambia', true, str_contains($d, 'non si sta ricaricando'));
+
+// L'isola ha la precedenza: di notte, senza rete, si parla eccome.
+list($c, ) = evaluateCondition(
+    live($scarica + ['island_status' => 'off_grid_unintentional', 'grid_status' => 'Islanded']),
+    $now, $notteCfg);
+check('di notte SENZA rete -> l isola parla lo stesso', 'offgrid', $c);
+
+// E la telemetria morta resta un guasto anche col buio.
+list($c, ) = evaluateCondition(live($scarica + ['timestamp' => date('c', $now - 3 * 3600)]),
+    $now, $notteCfg);
+check('di notte la telemetria morta resta un guasto', 'stale', $c);
+
+// Una batteria carica di notte non produce nessun verdetto notturno.
+list($c, ) = evaluateCondition(live(['percentage_charged' => 80.0]), $now, $notteCfg);
+check('di notte con la batteria carica -> ok normale', 'ok', $c);
+
+// Il flag mancante non deve zittire: nel dubbio un watchdog parla.
+list($c, ) = evaluateCondition(live($scarica), $now,
+    ['stale_limit_min' => 60, 'soc_min_percent' => 20]);
+check('cfg senza il flag giorno/notte -> parla', 'soc', $c);
+
+echo "\nLa percentuale non mente sull arrotondamento\n";
+
+check('19,6 non diventa 20', '19.6%', fmtPerc(19.6));
+check('  cosi la frase non dice piu 20% sotto la soglia 20%', false,
+    str_contains((string) evaluateCondition(live($scarica), $now, $giornoCfg)[1], 'Carica 20% sotto la soglia 20%'));
+check('un valore tondo resta tondo', '20%', fmtPerc(20.0));
+check('carica assente -> n/d', 'n/d', fmtPerc(null));
+
+echo "\nLa notte non cancella la memoria di un allarme messo da parte\n";
+// saveState riscrive tutto il file: il ramo notturno deve riportarsi dietro
+// le chiavi imp_*, altrimenti un'isola messa da parte durante una cecita'
+// sparisce al primo giro di buio.
+check('le chiavi imp_* attraversano la notte',
+    ['imp_status' => 'offgrid', 'imp_since' => 111, 'imp_last_notified' => 222],
+    memoriaConservata(['status' => 'unreachable', 'since' => 9,
+                       'imp_status' => 'offgrid', 'imp_since' => 111, 'imp_last_notified' => 222]));
+check('senza memoria non si inventa niente', [], memoriaConservata(['status' => 'ok']));
 
 echo "\nLA MAIL DEL 16/09: un errore 503 detto a chi la mail la legge\n";
 
