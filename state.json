@@ -1,13 +1,12 @@
 {
     "status": "ok",
-    "since": 1789657331,
+    "since": 1789709642,
     "last_notified": 0,
-    "last_ok": 1789657331,
+    "last_ok": 1789709642,
     "hb": "2026-09-18",
-    "notte_dump": "2026-09-18 03",
     "etot_ref": 218856,
-    "ref_ts": 1789694063,
+    "ref_ts": 1789709338,
     "prod_bad": false,
-    "riepilogo": "Notte: inverter in silenzio da 466 min (ultimo dato 19:28). Normale al buio, si rivaluta all'alba.",
-    "riepilogo_ts": 1789694063
+    "riepilogo": "0.00 kWh in 5 min (finestra 60 min, soglia 1000 W). Potenza istantanea 0 W. Ultimo dato 07:33.",
+    "riepilogo_ts": 1789709642
 }
