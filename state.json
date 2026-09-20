@@ -4,10 +4,10 @@
     "last_notified": 0,
     "last_ok": 1789921816,
     "hb": "2026-09-20",
-    "notte_dump": "2026-09-20 19",
-    "etot_ref": 219649.2,
-    "ref_ts": 1789923642,
+    "notte_dump": "2026-09-20 21",
+    "etot_ref": 219649.3,
+    "ref_ts": 1789933269,
     "prod_bad": false,
-    "riepilogo": "Notte: nessuna produzione attesa. Potenza 800 W. Ultimo dato 18:59.",
-    "riepilogo_ts": 1789923642
+    "riepilogo": "Notte: nessuna produzione attesa. Potenza 0 W. Ultimo dato 21:32.",
+    "riepilogo_ts": 1789933269
 }
