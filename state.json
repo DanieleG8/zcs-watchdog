@@ -1,13 +1,12 @@
 {
     "status": "ok",
-    "since": 1790083210,
+    "since": 1790145772,
     "last_notified": 0,
-    "last_ok": 1790083210,
+    "last_ok": 1790145772,
     "hb": "2026-09-23",
-    "notte_dump": "2026-09-23 04",
-    "etot_ref": 220438.1,
-    "ref_ts": 1790130150,
+    "etot_ref": 220449.9,
+    "ref_ts": 1790145772,
     "prod_bad": false,
-    "riepilogo": "Notte: nessuna produzione attesa. Potenza 0 W. Ultimo dato 04:19.",
-    "riepilogo_ts": 1790130150
+    "riepilogo": "Media 2719 W negli ultimi 260 min (soglia 1000 W). Potenza istantanea 17200 W. Ultimo dato 08:41.",
+    "riepilogo_ts": 1790145772
 }
