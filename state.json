@@ -1,13 +1,12 @@
 {
     "status": "ok",
-    "since": 1790517322,
+    "since": 1790597215,
     "last_notified": 0,
-    "last_ok": 1790517322,
+    "last_ok": 1790597215,
     "hb": "2026-09-28",
-    "notte_dump": "2026-09-28 07",
-    "etot_ref": 222379.6,
-    "ref_ts": 1790573631,
+    "etot_ref": 222624,
+    "ref_ts": 1790596301,
     "prod_bad": false,
-    "riepilogo": "Notte: nessuna produzione attesa. Potenza 1890 W. Ultimo dato 07:26.",
-    "riepilogo_ts": 1790573631
+    "riepilogo": "0.00 kWh in 15 min (finestra 60 min, soglia 1000 W). Potenza istantanea 56720 W. Ultimo dato 13:50.",
+    "riepilogo_ts": 1790597215
 }
