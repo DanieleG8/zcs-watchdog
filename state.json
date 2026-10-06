@@ -1,12 +1,12 @@
 {
-    "status": "zero",
-    "since": 1791269089,
-    "last_notified": 1791269089,
-    "last_ok": 1791194299,
+    "status": "ok",
+    "since": 1791294032,
+    "last_notified": 0,
+    "last_ok": 1791294032,
     "hb": "2026-10-06",
-    "etot_ref": 225157.2,
-    "ref_ts": 1791269089,
-    "prod_bad": true,
-    "riepilogo": "Solo 4.60 kWh in 337 min: 820 W medi contro una soglia di 1000 W. Il portale segna 10430 W ma quell'energia non entra da nessuna parte. Totale 225157.2 kWh. Ultimo dato 08:40.",
-    "riepilogo_ts": 1791269089
+    "etot_ref": 225377.2,
+    "ref_ts": 1791294032,
+    "prod_bad": false,
+    "riepilogo": "Media 31752 W negli ultimi 416 min (soglia 1000 W). Potenza istantanea 35580 W. Ultimo dato 15:31.",
+    "riepilogo_ts": 1791294032
 }
