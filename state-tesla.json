@@ -4,6 +4,6 @@
     "last_notified": 0,
     "last_ok": 1792165429,
     "hb": "2026-10-16",
-    "riepilogo": "Carica 59.7%, batteria 5100 W, casa 9672 W, rete 838 W, solare 3734 W.",
-    "riepilogo_ts": 1792165429
+    "riepilogo": "Notte: carica 19.6% sotto la soglia 20%, ma senza sole e' il ciclo normale e la rete c'e'. Si rivaluta di giorno. Carica 19.6%, batteria 0 W, casa 1994 W, rete 1994 W, solare 0 W.",
+    "riepilogo_ts": 1792179174
 }
