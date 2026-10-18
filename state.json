@@ -1,12 +1,12 @@
 {
     "status": "ok",
-    "since": 1792304800,
+    "since": 1792320357,
     "last_notified": 0,
-    "last_ok": 1792304800,
+    "last_ok": 1792320357,
     "hb": "2026-10-18",
-    "etot_ref": 228154.8,
-    "ref_ts": 1792304800,
+    "etot_ref": 228292.8,
+    "ref_ts": 1792320357,
     "prod_bad": false,
-    "riepilogo": "Media 7105 W negli ultimi 5 min (soglia 1000 W). Potenza istantanea 5100 W. Ultimo dato 08:26.",
-    "riepilogo_ts": 1792304800
+    "riepilogo": "Media 49737 W negli ultimi 5 min (soglia 1000 W). Potenza istantanea 47020 W. Ultimo dato 12:43.",
+    "riepilogo_ts": 1792320357
 }
