@@ -4,10 +4,10 @@
     "last_notified": 0,
     "last_ok": 1792510686,
     "hb": "2026-10-20",
-    "notte_dump": "2026-10-20 18",
-    "etot_ref": 229006.4,
-    "ref_ts": 1792512511,
+    "notte_dump": "2026-10-20 22",
+    "etot_ref": 229006.5,
+    "ref_ts": 1792527697,
     "prod_bad": false,
-    "riepilogo": "Notte: nessuna produzione attesa. Potenza 560 W. Ultimo dato 18:01.",
-    "riepilogo_ts": 1792512511
+    "riepilogo": "Notte: nessuna produzione attesa. Potenza 0 W. Ultimo dato 22:19.",
+    "riepilogo_ts": 1792527697
 }
