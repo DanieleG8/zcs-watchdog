@@ -1,12 +1,12 @@
 {
     "status": "ok",
-    "since": 1792656697,
+    "since": 1792677465,
     "last_notified": 0,
-    "last_ok": 1792656697,
+    "last_ok": 1792677465,
     "hb": "2026-10-22",
-    "etot_ref": 229224.4,
-    "ref_ts": 1792656393,
+    "etot_ref": 229452.8,
+    "ref_ts": 1792676552,
     "prod_bad": false,
-    "riepilogo": "0.00 kWh in 5 min (finestra 60 min, soglia 1000 W). Potenza istantanea 19150 W. Ultimo dato 10:06.",
-    "riepilogo_ts": 1792656697
+    "riepilogo": "0.00 kWh in 15 min (finestra 60 min, soglia 1000 W). Potenza istantanea 28490 W. Ultimo dato 15:39.",
+    "riepilogo_ts": 1792677465
 }
