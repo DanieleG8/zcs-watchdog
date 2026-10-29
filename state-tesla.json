@@ -1,9 +1,9 @@
 {
-    "status": "soc",
-    "since": 1793255086,
-    "last_notified": 1793255086,
-    "last_ok": 1793201585,
+    "status": "ok",
+    "since": 1793278233,
+    "last_notified": 0,
+    "last_ok": 1793278233,
     "hb": "2026-10-29",
-    "riepilogo": "Carica 19.4% sotto la soglia 20%, con il sole gia' alto: la batteria non si sta ricaricando. Carica 19.4%, batteria -1020 W, casa 1255 W, rete 161 W, solare 2114 W.",
-    "riepilogo_ts": 1793255086
+    "riepilogo": "Carica 88.1%, batteria -3750 W, casa 18511 W, rete -13033 W, solare 35294 W.",
+    "riepilogo_ts": 1793278233
 }
