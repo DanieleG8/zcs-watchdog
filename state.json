@@ -3,11 +3,11 @@
     "since": 1793278228,
     "last_notified": 0,
     "last_ok": 1793278228,
-    "hb": "2026-10-29",
-    "notte_dump": "2026-10-29 20",
-    "etot_ref": 230968.4,
-    "ref_ts": 1793302964,
+    "hb": "2026-10-30",
+    "notte_dump": "2026-10-30 01",
+    "etot_ref": 230968.5,
+    "ref_ts": 1793318440,
     "prod_bad": false,
-    "riepilogo": "Notte: nessuna produzione attesa. Potenza 0 W. Ultimo dato 20:39.",
-    "riepilogo_ts": 1793302964
+    "riepilogo": "Notte: nessuna produzione attesa. Potenza 0 W. Ultimo dato 00:57.",
+    "riepilogo_ts": 1793318440
 }
