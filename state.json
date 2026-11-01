@@ -4,10 +4,10 @@
     "last_notified": 0,
     "last_ok": 1793529411,
     "hb": "2026-11-01",
-    "notte_dump": "2026-11-01 18",
+    "notte_dump": "2026-11-01 22",
     "etot_ref": 231456.6,
-    "ref_ts": 1793554282,
+    "ref_ts": 1793569301,
     "prod_bad": false,
-    "riepilogo": "Notte: inverter in silenzio da 77 min (ultimo dato 17:14). Normale al buio, si rivaluta all'alba.",
-    "riepilogo_ts": 1793554282
+    "riepilogo": "Notte: inverter in silenzio da 327 min (ultimo dato 17:14). Normale al buio, si rivaluta all'alba.",
+    "riepilogo_ts": 1793569301
 }
