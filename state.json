@@ -1,13 +1,12 @@
 {
-    "status": "ok",
-    "since": 1793529411,
-    "last_notified": 0,
+    "status": "zero",
+    "since": 1793601669,
+    "last_notified": 1793601669,
     "last_ok": 1793529411,
     "hb": "2026-11-02",
-    "notte_dump": "2026-11-02 02",
     "etot_ref": 231456.6,
-    "ref_ts": 1793582226,
-    "prod_bad": false,
-    "riepilogo": "Notte: inverter in silenzio da 543 min (ultimo dato 17:14). Normale al buio, si rivaluta all'alba.",
-    "riepilogo_ts": 1793582226
+    "ref_ts": 1793601669,
+    "prod_bad": true,
+    "riepilogo": "Solo 0.00 kWh in 324 min: 0 W medi contro una soglia di 1000 W. Potenza istantanea 0 W. Totale 231456.6 kWh. Ultimo dato 07:36.",
+    "riepilogo_ts": 1793601669
 }
