@@ -3,11 +3,11 @@
     "since": 1793601669,
     "last_notified": 1793601669,
     "last_ok": 1793529411,
-    "hb": "2026-11-02",
-    "notte_dump": "2026-11-02 17",
+    "hb": "2026-11-03",
+    "notte_dump": "2026-11-03 01",
     "etot_ref": 231456.6,
-    "ref_ts": 1793637295,
+    "ref_ts": 1793665930,
     "prod_bad": true,
-    "riepilogo": "Notte: nessuna produzione attesa. Potenza 0 W. Ultimo dato 17:10.",
-    "riepilogo_ts": 1793637295
+    "riepilogo": "Notte: inverter in silenzio da 501 min (ultimo dato 17:10). Normale al buio, si rivaluta all'alba.",
+    "riepilogo_ts": 1793665930
 }
