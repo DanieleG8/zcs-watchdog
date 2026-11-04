@@ -4,9 +4,10 @@
     "last_notified": 1793803730,
     "last_ok": 1793529411,
     "hb": "2026-11-04",
-    "etot_ref": 231456.6,
-    "ref_ts": 1793803730,
+    "notte_dump": "2026-11-04 22",
+    "etot_ref": 231456.8,
+    "ref_ts": 1793829587,
     "prod_bad": true,
-    "riepilogo": "Solo 0.00 kWh in 501 min: 0 W medi contro una soglia di 1000 W. Potenza istantanea 0 W. Totale 231456.6 kWh. Ultimo dato 15:45.",
-    "riepilogo_ts": 1793803730
+    "riepilogo": "Notte: nessuna produzione attesa. Potenza 0 W. Ultimo dato 22:52.",
+    "riepilogo_ts": 1793829587
 }
