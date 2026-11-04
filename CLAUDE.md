@@ -118,6 +118,25 @@ introdotte.
   altre condizioni: `stale`, `offgrid`, `auth` e `unreachable` valgono al buio
   esattamente come alla luce.
 
+  **E di giorno conta l'avanzo, non l'ora.** La condizione `riserva` (stessa
+  famiglia di `notte`, costante `SOSPESE`) copre la carica bassa di giorno
+  quando il solare non supera il consumo della casa di `TESLA_SOC_SURPLUS_W`.
+  In ottobre "sole alto" bastava a far scattare l'allarme: 31 mail su 41 in
+  trenta giorni, tutte fra 19,2% e 19,9%, tutte con la casa che assorbiva piu'
+  del sole. Hanno sepolto le mail del fotovoltaico fermo davvero dal 02/11.
+  `soc` ora vuol dire "c'e' energia per caricarla e non sale", confermato da
+  `TESLA_SOC_PERSIST_MIN` di avanzo continuo. Non rimettere "di giorno basta".
+
+- **La finestra di produzione non comincia prima dell'alba.** `evaluateProduction()`
+  misura da `max(ref_ts, inizioGiudizio())`. I giri non sono continui, e una
+  finestra ancorata all'ultimo giro notturno contava ore di buio come tempo in
+  cui produrre: tre falsi `NESSUNA PRODUZIONE` al mattino in ottobre.
+
+- **Ogni giro accoda il successivo.** L'ultimo step di `watchdog.yml` manda un
+  `repository_dispatch`. Prima, con ~5 risvegli al giorno e l'uscita dal loop
+  a ogni mail, il watchdog vegliava 4 ore su 24, e un allarme in corso non
+  veniva mai ripetuto. Il cron resta come rete di sicurezza.
+
 - **Le percentuali non si arrotondano fino a mentire.** `fmtPerc()`, non
   `round()`. La mail del 17/09 diceva "Carica 20% sotto la soglia 20%" per una
   carica di 19,6%: **un avviso che sembra sbagliato viene trattato come
@@ -160,7 +179,9 @@ restano cifrati e mascherati, ma tutto il resto e' in chiaro. Quindi:
   errore.
 - **Il cron di GitHub non rispetta la cadenza dichiarata.** Chiesto ogni 15
   minuti ne esegue una frazione. Per questo il cron sveglia soltanto il job, che
-  poi cicla al proprio ritmo per ~55 minuti. Non "sistemare" il cron togliendo
+  poi cicla al proprio ritmo per ~55 minuti e alla fine accoda il giro dopo.
+  Se la catena si spezza nessuno se ne accorge: lo si vede solo dai buchi fra
+  i commit `state:`. Non "sistemare" il cron togliendo
   il loop.
 - **I file di stato sono generati, e il loro salvataggio non si fonde.** Se due
   run si sovrappongono, un `git pull --rebase` su `state.json` trova un

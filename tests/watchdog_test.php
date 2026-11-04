@@ -199,6 +199,30 @@ list($c, $d) = evaluateProduction(nodo(218529.9, 0, $notte, gmdate('Y-m-d\TH:i:s
 check('di notte anche con dato fresco -> notte (decide il sole)', 'notte', $c);
 check('  e il messaggio non parla di silenzio', false, str_contains($d, 'in silenzio'));
 
+echo "\nIL CASO DEL 27/10: il buio non conta come tempo in cui produrre\n";
+// Mail vera del 27/10 alle 07:41: "Solo 1.10 kWh in 272 min: 242 W medi
+// contro una soglia di 1000 W. Il portale segna 2370 W". L'ultimo giro
+// notturno era delle 03:09: la finestra si portava dietro quattro ore di buio.
+// Sei ore dopo e' arrivato il RIENTRO. Stessa storia il 04/10 e il 06/10.
+$cfg1k   = ['zero_w_threshold' => 1000] + $cfg;
+$mattina = strtotime('2026-10-27 07:41:00');
+$alba    = inizioGiudizio($mattina, $cfg['lat'], $cfg['lon'], $cfg['day_margin_min']);
+check('  il giudizio del 27/10 si apre prima delle 07:41', true, $alba !== null && $alba < $mattina);
+$st = ['etot_ref' => 230305.7, 'ref_ts' => $mattina - 272 * 60, 'prod_bad' => false];
+list($c, $d) = evaluateProduction(nodo(230306.8, 2370, $mattina), $mattina, $st, $cfg1k);
+check('IL CASO DEL 27/10: 1,10 kWh dopo l alba, finestra ancorata alle 03:09 -> non zero', 'ok', $c);
+// Contati solo i minuti di giudizio, 1,10 kWh bastano e avanzano: promosso.
+check('  e anzi e promosso: la media sui minuti di luce supera la soglia', true, str_contains($d, 'Media'));
+
+// L'impianto fermo davvero, dal 02/11: 0,00 kWh, potenza 0 W. Un'ora piena
+// dopo l'apertura del giudizio la finestra si chiude e il guasto si dice.
+$tardi = $alba + 61 * 60;
+$st    = ['etot_ref' => 231456.6, 'ref_ts' => $mattina - 272 * 60, 'prod_bad' => false];
+$st['ref_ts'] = $tardi - 300 * 60;
+list($c, $d) = evaluateProduction(nodo(231456.6, 0, $tardi), $tardi, $st, $cfg1k);
+check('IL CASO DEL 02/11: zero kWh per un ora intera di giorno -> zero', 'zero', $c);
+check('  e i minuti dichiarati sono quelli di luce, non 300', true, str_contains($d, 'in 61 min'));
+
 echo "\ntestoRientro — un rientro dice da cosa si rientra\n";
 
 check('rientro dalla produzione -> lo dice',

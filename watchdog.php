@@ -355,7 +355,18 @@ function evaluateProduction(array $node, int $now, array $state, array $cfg): ar
             ['etot_ref' => $etot, 'ref_ts' => $now, 'prod_bad' => false]];
     }
 
-    $minuti   = ($now - $refTs) / 60;
+    // LA FINESTRA COMINCIA QUANDO COMINCIA IL GIUDIZIO, NON PRIMA.
+    // Il ramo notturno riancora ref_ts a ogni giro, ma i giri non sono
+    // continui: il 27/10 l'ultimo giro notturno era alle 03:09 e il primo del
+    // mattino alle 07:41, e la finestra si e' trovata lunga 272 minuti, quasi
+    // tutti di buio. 1,10 kWh divisi per 272 minuti fanno 242 W "medi" con il
+    // portale a 2370 W: NESSUNA PRODUZIONE, e un RIENTRO sei ore dopo. Lo
+    // stesso il 04/10 (297 min) e il 06/10 (337 min, portale a 10430 W).
+    // Contare il buio come tempo in cui l'impianto doveva produrre e' falso:
+    // la finestra parte al piu' presto dall'apertura del giudizio.
+    $inizio   = inizioGiudizio($now, $cfg['lat'], $cfg['lon'], $cfg['day_margin_min']);
+    $daTs     = $inizio !== null ? max($refTs, $inizio) : $refTs;
+    $minuti   = ($now - $daTs) / 60;
     $entrata  = $etot - $ref;                          // kWh accumulati nella finestra
     $servono  = $soglia * $minuti / 60 / 1000;         // kWh minimi per stare sopra soglia
     $mediaW   = $minuti > 0 ? $entrata * 1000 * 60 / $minuti : 0.0;
@@ -543,6 +554,18 @@ function isDaytime(int $now, float $lat, float $lon, int $marginMin): bool {
     if (!$rise || !$set) return true;
     $m = $marginMin * 60;
     return ($now >= $rise + $m) && ($now <= $set - $m);
+}
+
+/**
+ * Quando si apre il giudizio oggi: alba piu' DAY_MARGIN_MIN. E' lo stesso
+ * istante in cui isDaytime() comincia a dire si'. Null se il sole non da'
+ * un'alba (latitudini estreme): li' si torna alla finestra intera.
+ */
+function inizioGiudizio(int $now, float $lat, float $lon, int $marginMin): ?int {
+    $info = date_sun_info($now, $lat, $lon);
+    $rise = $info['sunrise'] ?? null;
+    if (!is_int($rise)) return null;
+    return $rise + $marginMin * 60;
 }
 
 function loadState(): array {

@@ -129,8 +129,13 @@ serve solo a farsi svegliare il prima possibile; la copertura la garantisce il l
   basta abbassare `LOOP_MINUTES`. Se lo alzi sopra ~60, alza anche `timeout-minutes`
   nel workflow.
 
-Se un giorno vuoi una cadenza garantita al minuto, il workflow accetta gia' un trigger
-esterno: un servizio cron gratuito (es. cron-job.org) che chiami
+- **Ogni esecuzione, finita, accoda la successiva** con un `repository_dispatch`
+  (`zcs-check`) mandato dal `GITHUB_TOKEN` del job. Il loop da solo non bastava: con
+  ~5 risvegli al giorno restavano scoperte 20 ore su 24, e ogni mail chiudeva il giro
+  in pochi secondi. Il cron resta come rete di sicurezza. Per spegnere la catena:
+  Variable `WD_CHAIN` = `off`.
+
+Lo stesso trigger lo puo' mandare anche un servizio esterno (es. cron-job.org) che chiami
 `POST /repos/OWNER/REPO/dispatches` con `{"event_type":"zcs-check"}` e un token.
 
 ## Note

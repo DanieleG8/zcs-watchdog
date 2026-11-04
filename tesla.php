@@ -59,6 +59,13 @@ $OFFGRID_PERSIST_MIN = (int) env('TESLA_OFFGRID_PERSIST_MIN', '15');
 // soltanto a non aprire le mail.
 $UNREACH_PERSIST_MIN = (int) env('TESLA_UNREACH_PERSIST_MIN', '90');
 $SOC_MIN_PERCENT     = (float) env('TESLA_SOC_MIN_PERCENT', '0'); // 0 = controllo disattivato
+// Una carica bassa e' un guasto solo se c'e' energia per ricaricarla e non sale.
+// Avanzo = solare meno casa: sotto questo valore il sole non basta nemmeno
+// alla casa, e la batteria in riserva e' semplicemente ferma ad aspettare.
+$SOC_SURPLUS_W       = (float) env('TESLA_SOC_SURPLUS_W', '1000');
+// Con 1 kW in avanzo una batteria sana esce dalla riserva in pochi minuti:
+// un'ora ferma sotto soglia, con l'avanzo, non e' piu' un caso.
+$SOC_PERSIST_MIN     = (int) env('TESLA_SOC_PERSIST_MIN', '60');
 
 // Stessa posizione usata dal watchdog fotovoltaico: serve a sapere se il sole
 // c'e'. Una batteria che si scarica di notte non e' un guasto, di giorno si'.
@@ -92,6 +99,15 @@ const STATE_ALTRO  = __DIR__ . '/state.json';
  */
 const CIECHE   = ['unreachable', 'auth'];
 const IMPIANTO = ['offgrid', 'soc', 'stale'];
+
+/**
+ * SOSPESE sono le condizioni in cui non si da' un verdetto: lo stato di prima
+ * resta com'e', non parte nessuna mail e nessun rientro. 'notte' e' la carica
+ * bassa al buio; 'riserva' e' la carica bassa di giorno quando il sole non
+ * basta nemmeno alla casa. In tutti e due i casi la batteria e' ferma perche'
+ * non ha niente con cui ricaricarsi, non perche' sia guasta.
+ */
+const SOSPESE  = ['notte', 'riserva'];
 
 const ETICHETTA_MIA   = 'Batteria Tesla';
 const ETICHETTA_ALTRA = 'Fotovoltaico';
@@ -200,6 +216,7 @@ function main(array $argv): int
     list($condition, $detail) = evaluateCondition($live, $adesso, [
         'stale_limit_min'  => $STALE_LIMIT_MIN,
         'soc_min_percent'  => $SOC_MIN_PERCENT,
+        'soc_surplus_w'    => $SOC_SURPLUS_W,
         'e_giorno'         => isDaytime($adesso, $LAT, $LON, $DAY_MARGIN_MIN),
     ]);
     return handleCondition($condition, $detail, $live);
@@ -313,8 +330,33 @@ function evaluateCondition(array $live, int $now, array $cfg): array
                 . 'ciclo normale e la rete c\'e\'. Si rivaluta di giorno. %s',
                 fmtPerc($soc), fmtPerc((float) $cfg['soc_min_percent']), $riepilogo)];
         }
-        return ['soc', sprintf('Carica %s sotto la soglia %s, con il sole gia\' alto: la batteria '
-            . 'non si sta ricaricando. %s',
+
+        // DI GIORNO CONTA L'AVANZO, NON L'ORA. In trenta giorni (ottobre 2026)
+        // questo allarme e' partito 18 volte, sempre fra 19,2% e 19,9%, sempre
+        // con la batteria a 0 W, e quasi sempre con la casa che assorbiva piu'
+        // di quanto il sole desse (solare 620 W, casa 17030 W; solare 15126 W,
+        // casa 38257 W). Una batteria ferma in riserva perche' il sole non basta
+        // nemmeno alla casa non ha niente con cui ricaricarsi: non e' un guasto,
+        // e 31 mail su 41 del mese erano questo. Hanno sepolto le quattro mail
+        // vere del fotovoltaico fermo dal 02/11.
+        // Il guasto e' un altro: sole in avanzo, e la carica che non sale.
+        // Quello lo dice solo l'avanzo (solare meno casa), e lo conferma il
+        // tempo (TESLA_SOC_PERSIST_MIN): una batteria sana con 1 kW in piu'
+        // esce dalla riserva in pochi minuti. battery_power non entra: su
+        // questo impianto dice 0 anche quando la carica si muove.
+        $solare = isset($live['solar_power']) ? (float) $live['solar_power'] : null;
+        $casa   = isset($live['load_power'])  ? (float) $live['load_power']  : null;
+        $soglia = (float) ($cfg['soc_surplus_w'] ?? 1000);
+        if ($solare !== null && $casa !== null && ($solare - $casa) < $soglia) {
+            return ['riserva', sprintf('Carica %s in riserva (soglia %s): il sole non basta a coprire '
+                . 'la casa (avanzo %s W, ne servono %s per ricaricare), quindi la batteria aspetta. '
+                . 'Non e\' un guasto. %s',
+                fmtPerc($soc), fmtPerc((float) $cfg['soc_min_percent']),
+                fmtW($solare - $casa), fmtW($soglia), $riepilogo)];
+        }
+        // Senza i due numeri non si puo' escludere niente: nel dubbio si parla.
+        return ['soc', sprintf('Carica %s sotto la soglia %s anche se il sole ne da\' piu\' di '
+            . 'quanta la casa ne usi: la batteria non si sta ricaricando. %s',
             fmtPerc($soc), fmtPerc((float) $cfg['soc_min_percent']), $riepilogo)];
     }
 
@@ -511,7 +553,7 @@ function continuitaAllarme(array $state, string $condition, int $now): array
  */
 function handleCondition(string $condition, string $detail, ?array $live): int
 {
-    global $OFFGRID_PERSIST_MIN, $UNREACH_PERSIST_MIN, $RENOTIFY_HOURS, $MISURA;
+    global $OFFGRID_PERSIST_MIN, $UNREACH_PERSIST_MIN, $SOC_PERSIST_MIN, $RENOTIFY_HOURS, $MISURA;
 
     $state = loadState();
     $now   = time();
@@ -524,12 +566,21 @@ function handleCondition(string $condition, string $detail, ?array $live): int
     // giorno non si chiude al tramonto - sarebbe un "tornato normale" falso,
     // lo stesso errore gia' fatto sul fotovoltaico - e non ne parte uno nuovo
     // per una scarica che ci si aspetta. All'alba si torna a giudicare.
-    if ($condition === 'notte') {
+    // Lo stesso vale per la RISERVA di giorno (vedi SOSPESE).
+    if (in_array($condition, SOSPESE, true)) {
         $prevNotte = $prev;
-        logline("NOTTE (stato '$prevNotte' conservato). $detail");
+        $since     = $state['since'] ?? $now;
+        // Un 'soc' ancora in attesa, mai notificato, non sopravvive a una
+        // sospensione: il suo cronometro misura un'ora di avanzo CONTINUO, e
+        // una nuvola lo interrompe. Si riparte da capo, senza dire niente.
+        if ($prev === 'soc' && (int) ($state['last_notified'] ?? 0) === 0) {
+            $prevNotte = 'ok';
+            $since     = $now;
+        }
+        logline(strtoupper($condition) . " (stato '$prevNotte' conservato). $detail");
         saveState([
             'status'        => $prevNotte,
-            'since'         => $state['since'] ?? $now,
+            'since'         => $since,
             'last_notified' => $state['last_notified'] ?? 0,
             'last_ok'       => $state['last_ok'] ?? 0,
             'hb'            => $hb,
@@ -540,7 +591,7 @@ function handleCondition(string $condition, string $detail, ?array $live): int
     $persistMin = [
         'stale'       => 0,   // il timeout e' gia' dentro TESLA_STALE_LIMIT_MIN
         'offgrid'     => $OFFGRID_PERSIST_MIN,
-        'soc'         => 0,
+        'soc'         => $SOC_PERSIST_MIN,
         'auth'        => 0,   // token non valido: nessuna attesa, il monitoraggio e' gia' fermo
         'unreachable' => $UNREACH_PERSIST_MIN,
         'ok'          => 0,

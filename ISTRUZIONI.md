@@ -166,6 +166,10 @@ Da qui parte da solo: il cron sveglia il job, che poi ricontrolla ogni 5 minuti 
   con `*/15` ne partivano ~17 al giorno invece di 96, con buchi fino a 6 ore. Per questo il job,
   una volta partito, **resta vivo e ripete il controllo ogni 5 minuti per ~55 minuti**
   (`LOOP_MINUTES` / `LOOP_INTERVAL_SEC`). Se scatta un allarme esce subito e manda la mail.
+  Finito il giro, l'ultimo step ("Riaccoda il prossimo giro") ne accoda subito un altro,
+  cosi' la sorveglianza non resta sospesa fino al prossimo cron. Nella lista Actions
+  vedrai quindi molte esecuzioni con evento `repository_dispatch`: e' normale. Per
+  spegnere la catena, Variable `WD_CHAIN` = `off`.
   Nel log del run vedrai la sequenza `--- controllo #1, #2, ... ---`.
 - **Esecuzioni "cancelled" nella lista Actions**: normale. Se il cron sveglia un job mentre
   un altro sta ancora girando, quello nuovo resta in coda e GitHub cancella gli eventuali

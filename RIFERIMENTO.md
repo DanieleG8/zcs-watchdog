@@ -1,7 +1,8 @@
 # Riferimento — mail che puoi ricevere e valori misurati
 
 Due watchdog indipendenti su un unico giro di controllo. Girano nello stesso
-job (`.github/workflows/watchdog.yml`), uno dopo l'altro, ogni cinque minuti:
+job (`.github/workflows/watchdog.yml`), uno dopo l'altro, ogni cinque minuti
+(e ogni job, finito, accoda il successivo: vedi sezione 4):
 un solo risveglio copre tutti e due gli impianti. Ma restano separati dove
 conta: stato proprio, soglie proprie, mail proprie. Se uno dei due script
 fallisce, l'altro viene eseguito lo stesso e continua a sorvegliare.
@@ -76,7 +77,7 @@ il dettaglio con i numeri del momento e chiude con da quanto dura l'anomalia.
 |---------|------------------|-------------------|
 | **POWERWALL SENZA TELEMETRIA** | il Gateway non manda dati da oltre 60 min: sistema staccato, gateway guasto, o rete di casa giu' | subito (il timeout e' gia' la soglia) |
 | **POWERWALL IN ISOLA (rete assente)** | `island_status` fuori da `on_grid`: il sistema dichiara di non avere la rete. Se le misure di flusso si contraddicono, il messaggio lo segnala invece di zittire l'allarme | 15 min |
-| **POWERWALL QUASI SCARICO** | carica sotto `TESLA_SOC_MIN_PERCENT` **e sole gia' alto**: la batteria non si sta ricaricando. Di notte la stessa carica non genera nulla (vedi sotto) | subito |
+| **POWERWALL QUASI SCARICO** | carica sotto `TESLA_SOC_MIN_PERCENT` **mentre il sole da' piu' di quanto la casa usi** (avanzo di almeno `TESLA_SOC_SURPLUS_W`): c'e' energia per ricaricarla e la carica non sale. Di notte, o di giorno quando il sole non basta nemmeno alla casa, la stessa carica non genera nulla (vedi sotto) | dopo `TESLA_SOC_PERSIST_MIN` (60 min) di avanzo continuo |
 | **TOKEN TESLA NON VALIDO (monitoraggio fermo)** | la catena dei refresh token si e' rotta: il monitoraggio della batteria e' fermo, va rifatta l'autorizzazione | subito |
 | **TOKEN TESLA DA RINNOVARE** | Tesla ha ruotato il token ma non e' stato possibile risalvarlo nel secret (PAT scaduto o senza permesso *Secrets: write*). **Hai poche ore** prima che il monitoraggio si fermi | subito |
 | **MONITORAGGIO CIECO (Fleet API non raggiungibile)** | la Fleet API non risponde. Se la telemetria si e' spenta mentre un allarme era in corso, la mail lo nomina: non e' rientrato, semplicemente non si vede piu' | 90 min |
@@ -136,6 +137,28 @@ il dettaglio con i numeri del momento e chiude con da quanto dura l'anomalia.
   `POWERWALL QUASI SCARICO` alle 02:19 per una scarica perfettamente normale,
   e con `RENOTIFY_HOURS` a 4 ore sarebbe tornata fino al mattino.
 
+- **Nemmeno di giorno la riserva e' un allarme, se il sole non basta alla
+  casa.** Sotto soglia, di giorno, la condizione e' `riserva` quando il solare
+  meno il consumo della casa sta sotto `TESLA_SOC_SURPLUS_W` (1000 W): la
+  batteria non ha niente con cui ricaricarsi. Come `notte`, `riserva` non e' un
+  verdetto: lo stato precedente resta, nessuna mail, nessun rientro. Un `soc`
+  ancora in attesa e mai notificato invece si azzera, perche' la sua ora deve
+  essere di avanzo **continuo**. L'avviso parte solo dopo
+  `TESLA_SOC_PERSIST_MIN` (60 min) con il sole in avanzo e la carica ancora
+  sotto soglia: con un chilowatt in piu' una batteria sana esce dalla riserva
+  in pochi minuti. `battery_power` non entra nel giudizio, perche' su questo
+  impianto dice 0 anche quando la carica si muove. Se mancano i numeri del
+  solare o della casa, nel dubbio l'avviso parte.
+
+  Nasce dai trenta giorni fra il 04/10 e il 04/11: 41 mail, di cui 31 erano
+  `POWERWALL QUASI SCARICO` e il suo `RIENTRO`, sempre fra 19,2% e 19,9% contro
+  una soglia di 20%, sempre con la batteria a 0 W, sempre con il sole sotto il
+  consumo (es. solare 620 W, casa 17030 W). Cosa sia quel 19,x fisso non lo
+  dice nessuna misura; il valore stabile e la batteria a 0 W fanno pensare a
+  una riserva impostata nell'app Tesla, ma **non e' verificato**. Intanto, dal
+  02/11, il fotovoltaico era fermo davvero, e le sue mail sono arrivate in
+  coppia con l'ennesima "batteria quasi scarica": sono passate per rumore.
+
 - **Le percentuali non si arrotondano fino a mentire.** Quella stessa mail
   diceva *"Carica 20% sotto la soglia 20%"*: la carica vera era 19,6% e
   `round()` la faceva salire a 20 su tutti e due i lati del confronto. Un
@@ -192,6 +215,14 @@ coordinate dell'impianto (Variables `PLANT_LAT` / `PLANT_LON`) con
 40 minuti di margine per lato. Fuori da quella finestra la misura resta
 ancorata al presente e nessun allarme di produzione puo' scattare: di notte
 non produrre e' normale.
+
+**La finestra di misura non comincia prima del giudizio.** Se fra l'ultimo
+giro notturno e il primo del mattino passano ore, la finestra parte comunque
+dall'alba piu' il margine, non dall'ultimo giro: il buio non conta come tempo
+in cui l'impianto doveva produrre. Il 04/10, il 06/10 e il 27/10 la finestra si
+era portata dietro 4-5 ore di notte (272-337 minuti), la media dei watt crollava
+e partiva `NESSUNA PRODUZIONE` con il portale a 2370-10430 W, seguita sei ore
+dopo da un `RIENTRO`. Sei mail su 41 del mese.
 
 **Perche' l'energia e non la potenza.** Un campo di potenza puo' restare
 appeso a un valore vecchio, o riportare un valore che non si materializza da
@@ -266,7 +297,9 @@ Sono tutte Variables del repo: si cambiano senza toccare il codice.
 | `TESLA_STALE_LIMIT_MIN` | 60 (default) | minuti senza telemetria |
 | `TESLA_OFFGRID_PERSIST_MIN` | 15 (default) | minuti in isola prima di avvisare |
 | `TESLA_UNREACH_PERSIST_MIN` | 90 (default) | minuti di Fleet API muta |
-| `TESLA_SOC_MIN_PERCENT` | 0 (default) | soglia carica, controllata **solo di giorno** — **0 = controllo spento del tutto** |
+| `TESLA_SOC_MIN_PERCENT` | 0 (default) | soglia carica, controllata **solo di giorno e solo con il sole in avanzo** — **0 = controllo spento del tutto** |
+| `TESLA_SOC_SURPLUS_W` | 1000 (default) | watt di solare oltre il consumo della casa sotto i quali una carica bassa e' `riserva`, non allarme |
+| `TESLA_SOC_PERSIST_MIN` | 60 (default) | minuti di avanzo continuo con la carica sotto soglia prima di avvisare |
 | `TESLA_LOOP_INTERVAL_SEC` | 600 (default) | secondi fra un controllo e il successivo |
 
 ---
@@ -278,3 +311,13 @@ sesto. Per questo il cron serve solo a **svegliare** il job, che poi continua da
 solo per ~55 minuti ricontrollando a intervalli regolari. Appena una condizione
 matura, il loop esce subito e la mail parte: il ritardo massimo fra il momento in
 cui l'anomalia e' accertata e la mail e' un intervallo di controllo, non un'ora.
+
+**Ogni giro, finito, accoda il successivo** (ultimo step del workflow,
+`repository_dispatch` `zcs-check`). Senza, fra il 23/10 e il 04/11 il cron ha
+svegliato il job circa 5 volte al giorno, a 4-8 ore di distanza: poco piu' di 4
+ore di sorveglianza su 24. E ogni mail chiudeva il giro dopo 25 secondi: il
+03/11, con il fotovoltaico fermo dal giorno prima, l'impianto alla luce e' stato
+guardato per 25 secondi in tutto, e la ripetizione ogni `RENOTIFY_HOURS` non
+poteva partire perche' non c'era nessun giro a farla partire. Il cron resta
+come rete di sicurezza: se la catena si spezza la riavvia lui. Per spegnere la
+catena, Variable `WD_CHAIN` = `off`.

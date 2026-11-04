@@ -399,10 +399,11 @@ check('  il messaggio dice che e il ciclo normale', true, str_contains($d, 'cicl
 check('  e che la rete copre', true, str_contains($d, "la rete c'e'"));
 check('  e quando si torna a guardare', true, str_contains($d, 'Si rivaluta di giorno'));
 
-// Di giorno la stessa carica e' un'altra cosa: c'e' il sole e non sale.
+// Di giorno, senza sole in avanzo, la stessa carica non e' un guasto: la
+// batteria e' in riserva perche' non ha niente con cui ricaricarsi.
 list($c, $d) = evaluateCondition(live($scarica), $now, $giornoCfg);
-check('la stessa carica di giorno -> allarme (li si interviene)', 'soc', $c);
-check('  e dice perche cambia', true, str_contains($d, 'non si sta ricaricando'));
+check('la stessa carica di giorno, senza sole -> riserva, nessun verdetto', 'riserva', $c);
+check('  e dice perche non e un guasto', true, str_contains($d, 'il sole non basta'));
 
 // L'isola ha la precedenza: di notte, senza rete, si parla eccome.
 list($c, ) = evaluateCondition(
@@ -420,9 +421,55 @@ list($c, ) = evaluateCondition(live(['percentage_charged' => 80.0]), $now, $nott
 check('di notte con la batteria carica -> ok normale', 'ok', $c);
 
 // Il flag mancante non deve zittire: nel dubbio un watchdog parla.
-list($c, ) = evaluateCondition(live($scarica), $now,
+list($c, ) = evaluateCondition(live(['solar_power' => 6000, 'load_power' => 1500] + $scarica), $now,
     ['stale_limit_min' => 60, 'soc_min_percent' => 20]);
-check('cfg senza il flag giorno/notte -> parla', 'soc', $c);
+check('cfg senza il flag giorno/notte, sole in avanzo -> parla', 'soc', $c);
+
+/*
+ * OTTOBRE 2026: 31 MAIL SU 41 PER UNA BATTERIA CHE STAVA BENE.
+ *
+ * In trenta giorni POWERWALL QUASI SCARICO e' partito 18 volte, sempre al
+ * mattino o nel pomeriggio, sempre fra 19,2% e 19,9% contro una soglia di 20%,
+ * sempre con la batteria a 0 W, ognuno seguito da un RIENTRO qualche ora dopo.
+ * Sono i valori arrivati davvero nelle mail: il sole non bastava nemmeno alla
+ * casa, e la batteria in riserva non aveva niente con cui ricaricarsi.
+ * Nel frattempo, dal 02/11, il fotovoltaico era fermo davvero, e le sue
+ * quattro mail sono passate per l'ennesimo falso allarme.
+ */
+echo "\nIL CASO DI OTTOBRE: la riserva non e' un guasto\n";
+$ottobre = [
+    '06/10 08:44' => [19.3, 19417, 11668],
+    '08/10 17:25' => [19.7,  9432,  6538],
+    '09/10 09:25' => [19.3, 59378, 20433],
+    '10/10 08:00' => [19.4,  4841,  1568],
+    '14/10 08:02' => [19.4,  7781,  2936],
+    '16/10 08:09' => [19.9, 34434,  3577],
+    '21/10 08:13' => [19.3, 17030,   620],
+    '30/10 10:01' => [19.9, 38257, 15126],
+    '04/11 15:48' => [19.2, 28919,     0],
+];
+foreach ($ottobre as $quando => [$carica, $casa, $sole]) {
+    list($c, ) = evaluateCondition(live(['percentage_charged' => $carica, 'battery_power' => 0,
+        'load_power' => $casa, 'grid_power' => $casa - $sole, 'solar_power' => $sole]), $now, $giornoCfg);
+    check("  $quando carica $carica%, casa $casa W, sole $sole W -> riserva", 'riserva', $c);
+}
+
+// Il 29/10 alle 07:24 il sole superava la casa di 859 W e la batteria stava
+// gia' caricando (-1020 W): alle 13:50 era all'88%. Sotto il chilowatt di
+// avanzo non si giudica, e anche sopra serve un'ora (TESLA_SOC_PERSIST_MIN).
+list($c, ) = evaluateCondition(live(['percentage_charged' => 19.4, 'battery_power' => -1020,
+    'load_power' => 1255, 'grid_power' => 161, 'solar_power' => 2114]), $now, $giornoCfg);
+check('  29/10 avanzo 859 W, batteria gia in carica -> riserva', 'riserva', $c);
+
+// Il guasto vero: sole in abbondanza, casa sazia, batteria ferma in riserva.
+list($c, $d) = evaluateCondition(live(['percentage_charged' => 19.5, 'battery_power' => 0,
+    'load_power' => 3000, 'grid_power' => -9000, 'solar_power' => 12000]), $now, $giornoCfg);
+check('sole in avanzo di 9 kW e carica ferma -> soc', 'soc', $c);
+check('  il messaggio dice che il sole basterebbe', true, str_contains($d, 'non si sta ricaricando'));
+
+// Senza i numeri del solare o della casa non si puo' escludere il guasto.
+list($c, ) = evaluateCondition(live(['percentage_charged' => 19.5, 'solar_power' => null]), $now, $giornoCfg);
+check('solare assente -> nel dubbio parla', 'soc', $c);
 
 echo "\nLa percentuale non mente sull arrotondamento\n";
 

@@ -8,8 +8,8 @@ on:
     # (vedi LOOP_MINUTES / LOOP_INTERVAL_SEC nello step "Run watchdog").
     # Il cron fitto serve solo a farsi "svegliare" il prima possibile.
     - cron: "*/15 * * * *"
-  # Trigger esterno opzionale (es. cron-job.org -> API GitHub) se un giorno
-  # si vuole una cadenza garantita:
+  # Ogni giro, finito, si riaccoda da solo con questo evento (vedi l'ultimo
+  # step). Lo stesso POST lo puo' mandare anche un servizio esterno:
   #   POST /repos/OWNER/REPO/dispatches  {"event_type":"zcs-check"}
   repository_dispatch:
     types: [zcs-check]
@@ -86,6 +86,8 @@ jobs:
           TESLA_OFFGRID_PERSIST_MIN: ${{ vars.TESLA_OFFGRID_PERSIST_MIN }}
           TESLA_UNREACH_PERSIST_MIN: ${{ vars.TESLA_UNREACH_PERSIST_MIN }}
           TESLA_SOC_MIN_PERCENT:     ${{ vars.TESLA_SOC_MIN_PERCENT }}
+          TESLA_SOC_SURPLUS_W:       ${{ vars.TESLA_SOC_SURPLUS_W }}
+          TESLA_SOC_PERSIST_MIN:     ${{ vars.TESLA_SOC_PERSIST_MIN }}
           TZ: Europe/Rome
           # --- Loop interno (rimedio ai cron saltati da GitHub) ---
           WD_MODE:           ${{ inputs.mode || 'run' }}
@@ -123,6 +125,8 @@ jobs:
 
             # Se uno dei due ha deciso di notificare, esco subito: le mail
             # partono negli step successivi (ritardo max ~LOOP_INTERVAL_SEC).
+            # Il giro dopo lo riaccoda l'ultimo step ("Riaccoda il prossimo
+            # giro"): senza, uscire qui voleva dire restare ciechi per ore.
             if grep -qxE '(tesla_)?notify=1' "$GITHUB_OUTPUT" 2>/dev/null; then
               echo "Notifica richiesta: esco dal loop per inviarla."
               break
@@ -205,3 +209,34 @@ jobs:
           done
           echo "Push dello stato non riuscito." >&2
           exit 1
+
+      # IL WATCHDOG DORMIVA PIU' DI QUANTO VEGLIASSE. Fra il 23/10 e il 04/11
+      # il cron ha svegliato il job 5 volte al giorno, a 4-8 ore di distanza:
+      # 5 giri da 51 minuti fanno poco piu' di 4 ore di sorveglianza su 24. E
+      # ogni mail chiudeva il giro in 25 secondi: il 03/11, col fotovoltaico
+      # fermo da un giorno, l'impianto alla luce e' stato guardato per 25
+      # secondi in tutto, e la ripetizione ogni RENOTIFY_HOURS non poteva
+      # partire perche' nessuno era sveglio a farla partire.
+      # Quindi ogni giro, finito, accoda il successivo. Un repository_dispatch
+      # mandato con il GITHUB_TOKEN avvia davvero un nuovo run (e' una delle
+      # due eccezioni documentate alla regola che i token del job non
+      # scatenano workflow), e la concurrency qui sopra lo fa partire appena
+      # questo ha salvato lo stato. Il cron resta: se la catena si spezza
+      # (un run fallito prima del loop, un disservizio di GitHub), e' lui a
+      # riavviarla. Per spegnerla: Variable WD_CHAIN = off.
+      - name: Riaccoda il prossimo giro
+        if: >-
+          always() && steps.wd.outcome == 'success'
+          && (inputs.mode || 'run') == 'run'
+          && vars.WD_CHAIN != 'off'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          curl -fsS -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/dispatches" \
+            -d '{"event_type":"zcs-check"}' \
+            && echo "Prossimo giro accodato." \
+            || echo "Accodamento non riuscito: ripartira' col cron."
