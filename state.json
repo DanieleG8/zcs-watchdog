@@ -1,12 +1,12 @@
 {
-    "status": "zero",
-    "since": 1794726084,
-    "last_notified": 1794726084,
-    "last_ok": 1794648439,
+    "status": "ok",
+    "since": 1794754006,
+    "last_notified": 0,
+    "last_ok": 1794754006,
     "hb": "2026-11-15",
-    "etot_ref": 232374.7,
-    "ref_ts": 1794726084,
-    "prod_bad": true,
-    "riepilogo": "Solo 0.20 kWh in 349 min: 34 W medi contro una soglia di 1000 W. Potenza istantanea 660 W. Totale 232374.7 kWh. Ultimo dato 08:00.",
-    "riepilogo_ts": 1794726084
+    "etot_ref": 232412.3,
+    "ref_ts": 1794754006,
+    "prod_bad": false,
+    "riepilogo": "Media 4848 W negli ultimi 465 min (soglia 1000 W). Potenza istantanea 1110 W. Ultimo dato 15:45.",
+    "riepilogo_ts": 1794754006
 }
