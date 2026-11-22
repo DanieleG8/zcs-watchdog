@@ -1,9 +1,9 @@
 {
     "status": "ok",
-    "since": 1795340373,
+    "since": 1795371340,
     "last_notified": 0,
-    "last_ok": 1795340373,
+    "last_ok": 1795371340,
     "hb": "2026-11-22",
-    "riepilogo": "Carica 23.8%, batteria -470 W, casa 538 W, rete -851 W, solare 1859 W.",
-    "riepilogo_ts": 1795340373
+    "riepilogo": "Carica 43.7%, batteria 2700 W, casa 2700 W, rete 0 W, solare 0 W.",
+    "riepilogo_ts": 1795371340
 }
