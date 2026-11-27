@@ -1,13 +1,12 @@
 {
-    "status": "ok",
-    "since": 1795616778,
-    "last_notified": 0,
+    "status": "zero",
+    "since": 1795766720,
+    "last_notified": 1795766720,
     "last_ok": 1795616778,
     "hb": "2026-11-27",
-    "notte_dump": "2026-11-27 01",
-    "etot_ref": 233570.8,
-    "ref_ts": 1795740495,
-    "prod_bad": false,
-    "riepilogo": "Notte: nessuna produzione attesa. Potenza 0 W. Ultimo dato 01:46.",
-    "riepilogo_ts": 1795740495
+    "etot_ref": 233573.7,
+    "ref_ts": 1795766720,
+    "prod_bad": true,
+    "riepilogo": "Solo 2.90 kWh in 437 min: 398 W medi contro una soglia di 1000 W. Il portale segna 9930 W ma quell'energia non entra da nessuna parte. Totale 233573.7 kWh. Ultimo dato 08:59.",
+    "riepilogo_ts": 1795766720
 }
